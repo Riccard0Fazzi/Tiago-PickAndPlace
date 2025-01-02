@@ -11,7 +11,9 @@ find_package(catkin REQUIRED COMPONENTS
                 roscpp
                 actionlib
                 move_base_msgs
-                tiago_iaslab_simulation)
+                tiago_iaslab_simulation
+                costmap_2d_msgs
+                geometry_msgs)
 
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)

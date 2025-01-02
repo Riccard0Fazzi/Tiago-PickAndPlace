@@ -54,6 +54,10 @@
   <depend>actionlib</depend>
   <depend>move_base_msgs</depend>
   <depend>tiago_iaslab_simulation</depend>
+  <depend>geometry_msgs</depend>
+  <depend>costmap_2d_msgs</depend>
+
+
 
   <!-- The export tag contains other, unspecified, tags -->
   <export>

@@ -1,7 +1,10 @@
 #include <ros/ros.h>
-#include <actionlib/client/simple_action_client.h> // WASSUPPPP
+#include <actionlib/client/simple_action_client.h> 
 #include <move_base_msgs/MoveBaseAction.h> // to navigate Tiago
 #include <tiago_iaslab_simulation/Coeffs.h> // to request m,q from /straight_line_srv
+#include <costmap_2d_msgs/ObstacleArrayMsg.h> // avoid tables
+#include <costmap_2d_msgs/ObstacleMsg.h> // avoid tables
+#include <geometry_msgs/Point.h> // avoid tables
 
 // Alias for the move_base action client
 typedef actionlib::SimpleActionClient<move_base_msgs::MoveBaseAction> MoveBaseClient;
@@ -60,6 +63,47 @@ public:
         }
     }
 
+    // AVOID TABLE method
+    // __________________________________________________
+    // method to add virtual obstacles for move_base to
+    // avoid the tables while navigating
+    void avoidTables(ros::NodeHandle nh){
+
+        // Publisher for obstacles
+        ros::Publisher pub = nh.advertise<costmap_2d_msgs::ObstacleArrayMsg>("/move_base/TebLocalPlannerROS/obstacles", 10);
+
+        // Wait for the publisher to establish connections
+        ros::Duration(0.5).sleep();
+
+        // Create an ObstacleArrayMsg
+        costmap_2d_msgs::ObstacleArrayMsg obstacleArray;
+
+        // Define the corners of the bounding box containing the two tables
+        geometry_msgs::Point32 point1, point2, point3, point4;
+        point1.x = 8.41865; point1.y = -1.17742; point1.z = 0.0; // Corner 1
+        point2.x = 8.41865; point2.y = -3.66258; point2.z = 0.0; // Corner 2
+        point3.x = 7.53347; point3.y = -3.66258; point3.z = 0.0; // Corner 3
+        point4.x = 7.53347; point4.y = -1.17742; point4.z = 0.0; // Corner 4
+
+        // Create an ObstacleMsg
+        costmap_2d_msgs::ObstacleMsg obstacle;
+        obstacle.polygon.points.push_back(point1);
+        obstacle.polygon.points.push_back(point2);
+        obstacle.polygon.points.push_back(point3);
+        obstacle.polygon.points.push_back(point4);
+
+        // Set an ID for the obstacle
+        obstacle.id = "tables";
+
+        // Add the obstacle to the array
+        obstacleArray.obstacles.push_back(obstacle);
+
+        // Publish the obstacle array once
+        pub.publish(obstacleArray);
+
+        ROS_INFO("Static rectangle obstacle published, Tiago is ready to avoid the tables!");
+    }
+
     // PICKING POSE NAVIGATION method
     // __________________________________________________
     // method to navigate Tiago to the picking pose to be
@@ -108,6 +152,8 @@ public:
         }
     }
 
+
+
 private:
 
     // CLASS VARIABLES
@@ -126,6 +172,9 @@ int main(int argc, char** argv)
 
     // Get m and q
     nodeA.callLineService();
+
+    // add virtual obstacles to avoid Tables with move_base
+    nodeA.avoidTables(nh);
 
     // Navigate to the Picking Pose
     nodeA.navigateToPickingPose();
