@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <package format="2">
-  <name>ir2425_group24_a2</name>
+  <name>ir2425_group_24_a2</name>
   <version>0.0.0</version>
   <description>The assignment2_ir2425_group24 package</description>
 
@@ -54,8 +54,6 @@
   <depend>actionlib</depend>
   <depend>move_base_msgs</depend>
   <depend>tiago_iaslab_simulation</depend>
-  <depend>geometry_msgs</depend>
-  <depend>costmap_2d_msgs</depend>
 
 
 
