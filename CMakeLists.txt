@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.0.2)
-project(ir2425_group24_a2)
+project(ir2425_group_24_a2)
 
 ## Compile as C++11, supported in ROS Kinetic and newer
 # add_compile_options(-std=c++11)
@@ -12,8 +12,7 @@ find_package(catkin REQUIRED COMPONENTS
                 actionlib
                 move_base_msgs
                 tiago_iaslab_simulation
-                costmap_2d_msgs
-                geometry_msgs)
+)
 
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
