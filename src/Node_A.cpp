@@ -2,9 +2,6 @@
 #include <actionlib/client/simple_action_client.h> 
 #include <move_base_msgs/MoveBaseAction.h> // to navigate Tiago
 #include <tiago_iaslab_simulation/Coeffs.h> // to request m,q from /straight_line_srv
-#include <costmap_2d_msgs/ObstacleArrayMsg.h> // avoid tables
-#include <costmap_2d_msgs/ObstacleMsg.h> // avoid tables
-#include <geometry_msgs/Point.h> // avoid tables
 
 // Alias for the move_base action client
 typedef actionlib::SimpleActionClient<move_base_msgs::MoveBaseAction> MoveBaseClient;
@@ -23,7 +20,46 @@ public:
         ROS_INFO("Waiting for the move_base action server to start...");
         move_base_client_.waitForServer();
         ROS_INFO("move_base action server started.");
+		// set up the two routines 
+		initialize_routine(); 
     }
+
+    void initialize_routine()
+    {
+		move_base_msgs::MoveBaseGoal goal; 
+		goal.target_pose.header.frame_id = "map"; // Use the map frame
+		
+		// first waypoint (end of the corridor)
+		goal.target_pose.header.stamp = ros::Time::now();
+        goal.target_pose.pose.position.x = 6.83904; // x-coordinate
+        goal.target_pose.pose.position.y = 0.0; // y-coordinate
+        goal.target_pose.pose.position.z = 0.0; // z-coordinate
+        goal.target_pose.pose.orientation.x = 0.0;
+        goal.target_pose.pose.orientation.y = 0.0;
+        goal.target_pose.pose.orientation.z = -0.7071; // sin(π/4)
+        goal.target_pose.pose.orientation.w = 0.7071; // cos(π/4)
+		
+		routineA.push_back(goal);
+ 
+		// second waypoint (lower right room corner)
+		goal.target_pose.header.stamp = ros::Time::now();
+        goal.target_pose.pose.position.x = 6.83904; // x-coordinate
+        goal.target_pose.pose.position.y = -4.01049; // y-coordinate
+        goal.target_pose.pose.orientation.z = 0.7071; // sin(π/4)
+        goal.target_pose.pose.orientation.w = 0.7071; // cos(π/4)
+		
+		routineA.push_back(goal);
+
+		// third waypoint ()
+		goal.target_pose.header.stamp = ros::Time::now();
+        goal.target_pose.pose.position.x = 7.83904; // x-coordinate
+        goal.target_pose.pose.position.y = -4.01049; // y-coordinate
+        goal.target_pose.pose.orientation.z = 0.7071; // sin(π/4)
+        goal.target_pose.pose.orientation.w = 0.7071; // cos(π/4)
+		
+		routineA.push_back(goal);
+    }
+
 
     // GET[m,q] method
     // __________________________________________________
@@ -63,93 +99,26 @@ public:
         }
     }
 
-    // AVOID TABLE method
-    // __________________________________________________
-    // method to add virtual obstacles for move_base to
-    // avoid the tables while navigating
-    void avoidTables(ros::NodeHandle nh){
-
-        // Publisher for obstacles
-        ros::Publisher pub = nh.advertise<costmap_2d_msgs::ObstacleArrayMsg>("/move_base/TebLocalPlannerROS/obstacles", 10);
-
-        // Wait for the publisher to establish connections
-        ros::Duration(0.5).sleep();
-
-        // Create an ObstacleArrayMsg
-        costmap_2d_msgs::ObstacleArrayMsg obstacleArray;
-
-        // Define the corners of the bounding box containing the two tables
-        geometry_msgs::Point32 point1, point2, point3, point4;
-        point1.x = 8.41865; point1.y = -1.17742; point1.z = 0.0; // Corner 1
-        point2.x = 8.41865; point2.y = -3.66258; point2.z = 0.0; // Corner 2
-        point3.x = 7.53347; point3.y = -3.66258; point3.z = 0.0; // Corner 3
-        point4.x = 7.53347; point4.y = -1.17742; point4.z = 0.0; // Corner 4
-
-        // Create an ObstacleMsg
-        costmap_2d_msgs::ObstacleMsg obstacle;
-        obstacle.polygon.points.push_back(point1);
-        obstacle.polygon.points.push_back(point2);
-        obstacle.polygon.points.push_back(point3);
-        obstacle.polygon.points.push_back(point4);
-
-        // Set an ID for the obstacle
-        obstacle.id = "tables";
-
-        // Add the obstacle to the array
-        obstacleArray.obstacles.push_back(obstacle);
-
-        // Publish the obstacle array once
-        pub.publish(obstacleArray);
-
-        ROS_INFO("Static rectangle obstacle published, Tiago is ready to avoid the tables!");
-    }
-
     // PICKING POSE NAVIGATION method
     // __________________________________________________
     // method to navigate Tiago to the picking pose to be
     // able to do the picking task
     void navigateToPickingPose()
     {
-        // Define the Picking Pose 
-        move_base_msgs::MoveBaseGoal goal;
-        goal.target_pose.header.frame_id = "map"; // Use the map frame
-        goal.target_pose.header.stamp = ros::Time::now();
+		for (const auto& goal : routineA) {
+			// Navigation to the Picking Pose
+			ROS_INFO("Navigate to the Picking Pose: x = %f, y = %f", goal.target_pose.pose.position.x, goal.target_pose.pose.position.y);
 
-        // Hard-coded Picking Pose
-        // position
-        goal.target_pose.pose.position.x = 7.96503; // x-coordinate
-        goal.target_pose.pose.position.y = -3.74143; // y-coordinate
-        goal.target_pose.pose.position.z = 0.0; // z-coordinate
-        // orientation
-        goal.target_pose.pose.orientation.x = 0.0;
-        goal.target_pose.pose.orientation.y = 0.0;
-        goal.target_pose.pose.orientation.z = 0.7071; // sin(π/4)
-        goal.target_pose.pose.orientation.w = 0.7071; // cos(π/4)
-
-        // Navigation to the Picking Pose
-        ROS_INFO("Navigate to the Picking Pose: x = %f, y = %f", goal.target_pose.pose.position.x, goal.target_pose.pose.position.y);
-
-        // Send the goal to move_base
-        move_base_client_.sendGoal(goal);
-
-        // Wait for the result
-        bool finished_before_timeout = move_base_client_.waitForResult(ros::Duration(30.0));
-
-        if (finished_before_timeout)
-        {
-            if (move_base_client_.getState() == actionlib::SimpleClientGoalState::SUCCEEDED)
-            {
-                ROS_INFO("The robot reached the Picking Pose successfully.");
-            }
-            else
-            {
-                ROS_WARN("The robot failed to reach the Picking Pose.");
-            }
-        }
-        else
-        {
-            ROS_ERROR("Timed out waiting for the robot to reach the Picking Pose.");
-        }
+			// Send the goal to move_base
+			move_base_client_.sendGoal(goal);
+			// wait for the result
+			move_base_client_.waitForResult();
+		}
+		
+		if (move_base_client_.getState() == actionlib::SimpleClientGoalState::SUCCEEDED)
+			ROS_INFO("The robot reached the Picking Pose successfully.");
+		else
+			ROS_WARN("The robot failed to reach the Picking Pose.");
     }
 
 
@@ -161,6 +130,8 @@ private:
     MoveBaseClient move_base_client_; // Action client for move_base
     double m; // Straight line m parameter
     double q; // Straight line q parameter
+    std::vector<move_base_msgs::MoveBaseGoal> routineA; // first routine to get tiago from initial pose to picking pose
+    std::vector<move_base_msgs::MoveBaseGoal> routineB; // second routine to move tiago from picking pose to placing pose and viceversa
 };
 
 int main(int argc, char** argv)
@@ -172,9 +143,6 @@ int main(int argc, char** argv)
 
     // Get m and q
     nodeA.callLineService();
-
-    // add virtual obstacles to avoid Tables with move_base
-    nodeA.avoidTables(nh);
 
     // Navigate to the Picking Pose
     nodeA.navigateToPickingPose();
