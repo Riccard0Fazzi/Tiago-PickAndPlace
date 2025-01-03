@@ -45,12 +45,21 @@ public:
 		goal.target_pose.header.stamp = ros::Time::now();
         goal.target_pose.pose.position.x = 6.83904; // x-coordinate
         goal.target_pose.pose.position.y = -4.01049; // y-coordinate
-        goal.target_pose.pose.orientation.z = 0.7071; // sin(π/4)
-        goal.target_pose.pose.orientation.w = 0.7071; // cos(π/4)
+        goal.target_pose.pose.orientation.z = 0.0; // sin(π/4)
+        goal.target_pose.pose.orientation.w = 1.0; // cos(π/4) 
 		
 		routineA.push_back(goal);
 
-		// third waypoint ()
+		// third waypoint (picking position)
+		goal.target_pose.header.stamp = ros::Time::now();
+        goal.target_pose.pose.position.x = 7.83904; // x-coordinate
+        goal.target_pose.pose.position.y = -4.01049; // y-coordinate
+        goal.target_pose.pose.orientation.z = 0.0; // sin(π/4)
+        goal.target_pose.pose.orientation.w = 1.0; // cos(π/4)
+		
+		routineA.push_back(goal);
+
+        // fourth waypoint (picking position orientation)
 		goal.target_pose.header.stamp = ros::Time::now();
         goal.target_pose.pose.position.x = 7.83904; // x-coordinate
         goal.target_pose.pose.position.y = -4.01049; // y-coordinate
@@ -113,6 +122,8 @@ public:
 			move_base_client_.sendGoal(goal);
 			// wait for the result
 			move_base_client_.waitForResult();
+            // wait for stable routine
+            ros::Duration(2.0).sleep();
 		}
 		
 		if (move_base_client_.getState() == actionlib::SimpleClientGoalState::SUCCEEDED)
