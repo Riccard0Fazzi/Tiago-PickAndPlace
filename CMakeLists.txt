@@ -16,6 +16,7 @@ find_package(catkin REQUIRED COMPONENTS
 				message_generation
 				geometry_msgs
 				apriltag_ros
+				trajectory_msgs
 )
 
 find_package(OpenCV REQUIRED)
@@ -111,7 +112,7 @@ generate_messages(
 catkin_package(
 #  INCLUDE_DIRS include
 #  LIBRARIES assignment2_ir2425_group24
-    CATKIN_DEPENDS roscpp tiago_iaslab_simulation message_runtime geometry_msgs
+    CATKIN_DEPENDS roscpp tiago_iaslab_simulation message_runtime geometry_msgs trajectory_msgs
 
 #  DEPENDS system_lib
 )

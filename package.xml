@@ -61,6 +61,7 @@
   <depend>opencv4</depend>
   <depend>geometry_msgs</depend>
   <depend>apriltag_ros</depend>
+  <depend>trajectory_msgs</depend>
 
   <!-- The export tag contains other, unspecified, tags -->
   <export>

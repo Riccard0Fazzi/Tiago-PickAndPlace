@@ -3,6 +3,8 @@
 #include <move_base_msgs/MoveBaseAction.h> // to navigate Tiago
 #include <tiago_iaslab_simulation/Coeffs.h> // to request m,q from /straight_line_srv
 #include <ir2425_group_24_a2/picking.h>
+#include <trajectory_msgs/JointTrajectory.h>
+#include <trajectory_msgs/JointTrajectoryPoint.h>
 
 // Alias for the move_base action client
 typedef actionlib::SimpleActionClient<move_base_msgs::MoveBaseAction> MoveBaseClient;
@@ -23,7 +25,9 @@ public:
         ROS_INFO("Waiting for the /move_base action server to start...");
         move_base_client_.waitForServer();
         ROS_INFO("/move_base action server started.");
-
+		// publisher for the initial tilt of the camera 
+		// to be ready to detect aprilTags
+		tilt_cam_pub = nh.advertise<trajectory_msgs::JointTrajectory>("/head_controller/command", 10);
 		// set up the two routines 
 		initialize_routines(); 
     }
@@ -116,8 +120,30 @@ public:
 		routineB.push_back(goal);
 
 
-    }
+   }
 
+   void TiltCamera(){
+		// define rate for the initialization operation
+		ros::Rate cam_init_r(1);
+		// waiting for subscribers to /head_controller/command
+		while(tilt_cam_pub.getNumSubscribers() == 0 && ros::ok()){
+			cam_init_r.sleep();
+		}
+		// initialize object containing the command to
+		// send to Tiago
+		trajectory_msgs::JointTrajectory tilt_cmd;
+		trajectory_msgs::JointTrajectoryPoint point;
+		// set the tilt command
+		tilt_cmd.joint_names = {"head_1_joint","head_2_joint"};
+		point.positions = {0.0,-1.0};
+		point.time_from_start = ros::Duration(1.0);
+		tilt_cmd.points.push_back(point);
+		// send the tilt command to Tiago
+		tilt_cam_pub.publish(tilt_cmd);
+		// wait for Tiago to incline the camera ..
+		cam_init_r.sleep();
+		// publish feedback
+    }
 
     // GET[m,q] method
     // __________________________________________________
@@ -245,6 +271,7 @@ private:
     double q; // Straight line q parameter
     std::vector<move_base_msgs::MoveBaseGoal> routineA; // first routine to get tiago from initial pose to picking pose
     std::vector<move_base_msgs::MoveBaseGoal> routineB; // second routine to move tiago from picking pose to placing pose and viceversa
+	ros::Publisher tilt_cam_pub; // publisher for the initial tilt of the camera
 };
 
 int main(int argc, char** argv)
@@ -259,8 +286,8 @@ int main(int argc, char** argv)
 
     // Navigate to the Picking Pose
     nodeA.navigateToPickingPose();
-
-    //nodeA.navigateRoutineB();
+	// Tilt Camera procedure
+	nodeA.TiltCamera();
 
     // send goal to Node_B to detect a pickable object and pick it
 	nodeA.Picking();
