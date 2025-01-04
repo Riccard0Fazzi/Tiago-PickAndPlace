@@ -14,7 +14,11 @@ find_package(catkin REQUIRED COMPONENTS
                 tiago_iaslab_simulation
 				std_msgs
 				message_generation
+				geometry_msgs
+				apriltag_ros
 )
+
+find_package(OpenCV REQUIRED)
 
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
@@ -107,7 +111,7 @@ generate_messages(
 catkin_package(
 #  INCLUDE_DIRS include
 #  LIBRARIES assignment2_ir2425_group24
-    CATKIN_DEPENDS roscpp tiago_iaslab_simulation message_runtime
+    CATKIN_DEPENDS roscpp tiago_iaslab_simulation message_runtime geometry_msgs
 
 #  DEPENDS system_lib
 )
@@ -121,6 +125,7 @@ catkin_package(
 include_directories(
 # include
  ${catkin_INCLUDE_DIRS}
+ ${OpenCV_INCLUDE_DIRS}
 )
 
 ## Declare a C++ library
@@ -212,4 +217,4 @@ add_executable(Node_A src/Node_A.cpp)
 target_link_libraries(Node_A ${catkin_LIBRARIES})
 
 add_executable(Node_B src/Node_B.cpp)
-target_link_libraries(Node_B ${catkin_LIBRARIES})
+target_link_libraries(Node_B ${catkin_LIBRARIES} ${OpenCV_LIBRARIES})

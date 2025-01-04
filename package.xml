@@ -54,9 +54,13 @@
   <depend>actionlib</depend>
   <depend>move_base_msgs</depend>
   <depend>tiago_iaslab_simulation</depend>
-  <build_depend>message_generation</build_depend>
-  <exec_depend>message_runtime</exec_depend>
-
+  <depend>message_generation</depend>
+  <depend>message_runtime</depend>
+  <depend>cv_bridge</depend>
+  <depend>image_transport</depend>
+  <depend>opencv4</depend>
+  <depend>geometry_msgs</depend>
+  <depend>apriltag_ros</depend>
 
   <!-- The export tag contains other, unspecified, tags -->
   <export>
