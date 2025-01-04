@@ -41,12 +41,14 @@ class NodeB
 		// Callback for the service
 		bool DetectionCallback(ir2425_group_24_a2::picking::Request &req, ir2425_group_24_a2::picking::Response &res) {
 			ROS_INFO("Received request from Node_A!");
-			activated = req.activate_detection;
+            detected_objects.clear();
+			activated = true;
+            ros::Duration(10.0).sleep();
+			activated = false;
+
 			// Process the request and populate the response
 			res.picked_obj_id = 3; 
 			ROS_INFO("Object ID = %d picking action completed", res.picked_obj_id);
-			ros::Duration(2.0).sleep();
-			activated = false;
 
 			return true;
 		}
@@ -79,12 +81,15 @@ class NodeB
         // in Tiago's camera and compute their position
         // wrt map frame (20 Hz)
         void ObjectDetectionCallback(const apriltag_ros::AprilTagDetectionArray::ConstPtr& msg) {
+            if(msg->detections.empty()){
+                return;
+            }
 
             // callBack always running, saving detected poses only when required
             if (activated) {
-				detected_objects.clear();
+                int id = msg->detections[0].id[0];
 				geometry_msgs::PoseStamped frame;
-				frame.header.seq = static_cast<uint32_t>(msg->detections[0].id[0]); // saving ID
+				frame.header.seq = static_cast<uint32_t>(id); // saving ID
 				ROS_INFO("Detected object ID: %u",frame.header.seq);
 				frame.pose.position = msg->detections[0].pose.pose.pose.position; // saving position
 				frame.pose.orientation = msg->detections[0].pose.pose.pose.orientation;// saving orientation
