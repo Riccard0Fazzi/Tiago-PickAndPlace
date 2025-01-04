@@ -2,6 +2,7 @@
 #include <actionlib/client/simple_action_client.h> 
 #include <move_base_msgs/MoveBaseAction.h> // to navigate Tiago
 #include <tiago_iaslab_simulation/Coeffs.h> // to request m,q from /straight_line_srv
+#include <ir2425_group_24_a2/picking.h>
 
 // Alias for the move_base action client
 typedef actionlib::SimpleActionClient<move_base_msgs::MoveBaseAction> MoveBaseClient;
@@ -13,13 +14,16 @@ public:
     // CONSTRUCTOR
     NodeA(ros::NodeHandle& nh)
         : client_(nh.serviceClient<tiago_iaslab_simulation::Coeffs>("/straight_line_srv")), // service client to the straight line service
-          move_base_client_("/move_base", true) // action client to the move_base action server
+          move_base_client_("/move_base", true), // action client to the move_base action server
+		  picking_client_(nh.serviceClient<ir2425_group_24_a2::picking>("picking")) // service client to the Node_B server
     {
         ROS_INFO("Node A initialized and ready to call /straight_line_srv service.");
+
         // Wait for the move_base action server to start
-        ROS_INFO("Waiting for the move_base action server to start...");
+        ROS_INFO("Waiting for the /move_base action server to start...");
         move_base_client_.waitForServer();
-        ROS_INFO("move_base action server started.");
+        ROS_INFO("/move_base action server started.");
+
 		// set up the two routines 
 		initialize_routines(); 
     }
@@ -63,6 +67,14 @@ public:
         // ________________________________________________________
         // (from picking pose to placing pose and viceversa)
 
+		// PICKING POSE orientation
+		goal.target_pose.pose.position.x = 7.83904; // x-coordinate
+        goal.target_pose.pose.position.y = -3.71049; // y-coordinate
+        goal.target_pose.pose.orientation.z = 0.0; // sin(π/4)
+        goal.target_pose.pose.orientation.w = 1.0; // cos(π/4)
+		
+		routineB.push_back(goal);
+
         // upper WAY-CORNER
         goal.target_pose.pose.position.x = 8.83904; // x-coordinate
         goal.target_pose.pose.position.y = -4.01049; // y-coordinate
@@ -76,7 +88,7 @@ public:
         goal.target_pose.pose.position.y = -1.85049; // y-coordinate
         goal.target_pose.pose.orientation.z = 1.0; // sin(π/4)
         goal.target_pose.pose.orientation.w = 0.0; // cos(π/4)
-		
+
 		routineB.push_back(goal);
 
         // POST PLACING ORIENTATION
@@ -141,9 +153,37 @@ public:
         }
         else
         {
-            ROS_ERROR("Failed to call service /straight_line_srv service");
+            ROS_ERROR("Failed to call /straight_line_srv service");
         }
     }
+
+	// PICKING method
+    // __________________________________________________
+    // method to request the /picking server to detect
+	// a pickable object and then start the picking action
+    // in Node_C server, once the picking action is completed
+	// the method terminates
+    void Picking()
+    {
+        // Create a service request and response object
+		ir2425_group_24_a2::picking srv;
+
+        // Set the 'activate_detection' field in the request
+        srv.request.activate_detection = true;
+
+        // Call the service
+        if (picking_client_.call(srv))
+        {
+            ROS_INFO("/picking service called successfully.");
+            ROS_INFO("Picked object ID = %d",srv.response.picked_obj_id);
+        }
+        else
+        {
+            ROS_ERROR("Failed to call /picking service");
+        }
+    }
+
+
 
     // PICKING POSE NAVIGATION method
     // __________________________________________________
@@ -200,6 +240,7 @@ private:
     // CLASS VARIABLES
     ros::ServiceClient client_; // Service client for straight_line_srv
     MoveBaseClient move_base_client_; // Action client for move_base
+	ros::ServiceClient picking_client_; // Service client to picking server
     double m; // Straight line m parameter
     double q; // Straight line q parameter
     std::vector<move_base_msgs::MoveBaseGoal> routineA; // first routine to get tiago from initial pose to picking pose
@@ -219,11 +260,10 @@ int main(int argc, char** argv)
     // Navigate to the Picking Pose
     nodeA.navigateToPickingPose();
 
-    nodeA.navigateRoutineB();
+    //nodeA.navigateRoutineB();
 
-    // send goal to Node_B to detect a pickable object
-    // receiving the pose of the object
-    
+    // send goal to Node_B to detect a pickable object and pick it
+	nodeA.Picking();
     // send goal to Node_C to pick that object and 
     // manipulate it for transportation
 
