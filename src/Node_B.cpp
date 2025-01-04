@@ -6,7 +6,7 @@ class NodeB
 	public:
 		NodeB() {
 			// Initialize the service server
-			service_ = nh_.advertiseService("picking", &NodeBServer::DetectionCallback, this);
+			service_ = nh_.advertiseService("picking", &NodeB::DetectionCallback, this);
 			ROS_INFO("Node_B server is ready to receive requests.");
 		}
 
@@ -23,7 +23,7 @@ class NodeB
 
 			// Process the request and populate the response
 			res.picked_obj_id = 3; 
-			ROS_INFO("Object ID = %s picking action completed", res.picked_obj_id.c_str());
+			ROS_INFO("Object ID = %d picking action completed", res.picked_obj_id);
 			return true;
 		}
 };

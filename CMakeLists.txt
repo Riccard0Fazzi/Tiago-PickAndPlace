@@ -210,3 +210,6 @@ include_directories(
 
 add_executable(Node_A src/Node_A.cpp)
 target_link_libraries(Node_A ${catkin_LIBRARIES})
+
+add_executable(Node_B src/Node_B.cpp)
+target_link_libraries(Node_B ${catkin_LIBRARIES})
