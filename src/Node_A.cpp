@@ -21,16 +21,18 @@ public:
         move_base_client_.waitForServer();
         ROS_INFO("move_base action server started.");
 		// set up the two routines 
-		initialize_routine(); 
+		initialize_routines(); 
     }
 
-    void initialize_routine()
+    void initialize_routines()
     {
+        // ROUTINE A
+        // ___________________________________________________________
+        // (from initial pose to picking pose)
 		move_base_msgs::MoveBaseGoal goal; 
 		goal.target_pose.header.frame_id = "map"; // Use the map frame
 		
-		// first waypoint (end of the corridor)
-		goal.target_pose.header.stamp = ros::Time::now();
+		// OUT OF CORRIDOR 
         goal.target_pose.pose.position.x = 6.83904; // x-coordinate
         goal.target_pose.pose.position.y = 0.0; // y-coordinate
         goal.target_pose.pose.position.z = 0.0; // z-coordinate
@@ -41,32 +43,67 @@ public:
 		
 		routineA.push_back(goal);
  
-		// second waypoint (lower right room corner)
-		goal.target_pose.header.stamp = ros::Time::now();
+		// lower WAY-CORNER
         goal.target_pose.pose.position.x = 6.83904; // x-coordinate
         goal.target_pose.pose.position.y = -4.01049; // y-coordinate
-        goal.target_pose.pose.orientation.z = 0.0; // sin(π/4)
-        goal.target_pose.pose.orientation.w = 1.0; // cos(π/4) 
+        goal.target_pose.pose.orientation.z = 0.0; // sin(π)
+        goal.target_pose.pose.orientation.w = 1.0; // cos(π) 
 		
 		routineA.push_back(goal);
 
-		// third waypoint (picking position)
-		goal.target_pose.header.stamp = ros::Time::now();
+        // PICKING POSE
         goal.target_pose.pose.position.x = 7.83904; // x-coordinate
-        goal.target_pose.pose.position.y = -4.01049; // y-coordinate
-        goal.target_pose.pose.orientation.z = 0.0; // sin(π/4)
-        goal.target_pose.pose.orientation.w = 1.0; // cos(π/4)
-		
-		routineA.push_back(goal);
-
-        // fourth waypoint (picking position orientation)
-		goal.target_pose.header.stamp = ros::Time::now();
-        goal.target_pose.pose.position.x = 7.83904; // x-coordinate
-        goal.target_pose.pose.position.y = -4.01049; // y-coordinate
+        goal.target_pose.pose.position.y = -3.71049; // y-coordinate
         goal.target_pose.pose.orientation.z = 0.7071; // sin(π/4)
         goal.target_pose.pose.orientation.w = 0.7071; // cos(π/4)
 		
 		routineA.push_back(goal);
+
+        // ROUTINE B (loop)
+        // ________________________________________________________
+        // (from picking pose to placing pose and viceversa)
+
+        // upper WAY-CORNER
+        goal.target_pose.pose.position.x = 8.83904; // x-coordinate
+        goal.target_pose.pose.position.y = -4.01049; // y-coordinate
+        goal.target_pose.pose.orientation.z = 0.7071; // sin(π/4)
+        goal.target_pose.pose.orientation.w = 0.7071; // cos(π/4)
+		
+		routineB.push_back(goal);
+
+        // PLACING POSE
+        goal.target_pose.pose.position.x = 8.53904; // x-coordinate
+        goal.target_pose.pose.position.y = -1.85049; // y-coordinate
+        goal.target_pose.pose.orientation.z = 1.0; // sin(π/4)
+        goal.target_pose.pose.orientation.w = 0.0; // cos(π/4)
+		
+		routineB.push_back(goal);
+
+        // POST PLACING ORIENTATION
+        goal.target_pose.pose.position.x = 8.53904;; // x-coordinate
+        goal.target_pose.pose.position.y = -1.85049; // y-coordinate
+        goal.target_pose.pose.orientation.z = -0.7071; // sin(π/4)
+        goal.target_pose.pose.orientation.w = 0.7071; // cos(π/4)
+		
+		routineB.push_back(goal);
+
+        // upper WAY-CORNER
+        goal.target_pose.pose.position.x = 8.83904; // x-coordinate
+        goal.target_pose.pose.position.y = -4.01049; // y-coordinate
+        goal.target_pose.pose.orientation.z = 1.0; // sin(π/4)
+        goal.target_pose.pose.orientation.w = 0.0; // cos(π/4)
+		
+		routineB.push_back(goal);
+
+        // PICKING POSE
+        goal.target_pose.pose.position.x = 7.83904; // x-coordinate
+        goal.target_pose.pose.position.y = -3.71049; // y-coordinate
+        goal.target_pose.pose.orientation.z = 0.7071; // sin(π/4)
+        goal.target_pose.pose.orientation.w = 0.7071; // cos(π/4)
+		
+		routineB.push_back(goal);
+
+
     }
 
 
@@ -114,16 +151,40 @@ public:
     // able to do the picking task
     void navigateToPickingPose()
     {
-		for (const auto& goal : routineA) {
+		for (size_t i = 0; i < routineA.size(); ++i) {
+
+            routineA[i].target_pose.header.stamp = ros::Time::now() + ros::Duration(0.1);
 			// Navigation to the Picking Pose
-			ROS_INFO("Navigate to the Picking Pose: x = %f, y = %f", goal.target_pose.pose.position.x, goal.target_pose.pose.position.y);
+			ROS_INFO("[Navigation] x = %f, y = %f", routineA[i].target_pose.pose.position.x, routineA[i].target_pose.pose.position.y);
 
 			// Send the goal to move_base
-			move_base_client_.sendGoal(goal);
+			move_base_client_.sendGoal(routineA[i]);
 			// wait for the result
 			move_base_client_.waitForResult();
             // wait for stable routine
-            ros::Duration(2.0).sleep();
+            ros::Duration(0.5).sleep();
+		}
+		
+		if (move_base_client_.getState() == actionlib::SimpleClientGoalState::SUCCEEDED)
+			ROS_INFO("The robot reached the Picking Pose successfully.");
+		else
+			ROS_WARN("The robot failed to reach the Picking Pose.");
+    }
+
+    void navigateRoutineB()
+    {
+		for (size_t i = 0; i < routineB.size(); ++i) {
+
+            routineB[i].target_pose.header.stamp = ros::Time::now() + ros::Duration(0.1);
+			// Navigation to the Picking Pose
+			ROS_INFO("[Navigation] x = %f, y = %f", routineB[i].target_pose.pose.position.x, routineB[i].target_pose.pose.position.y);
+
+			// Send the goal to move_base
+			move_base_client_.sendGoal(routineB[i]);
+			// wait for the result
+			move_base_client_.waitForResult();
+            // wait for stable routine
+            ros::Duration(0.5).sleep();
 		}
 		
 		if (move_base_client_.getState() == actionlib::SimpleClientGoalState::SUCCEEDED)
@@ -157,6 +218,8 @@ int main(int argc, char** argv)
 
     // Navigate to the Picking Pose
     nodeA.navigateToPickingPose();
+
+    nodeA.navigateRoutineB();
 
     // send goal to Node_B to detect a pickable object
     // receiving the pose of the object
