@@ -287,7 +287,7 @@ int main(int argc, char** argv)
     // Navigate to the Picking Pose
     nodeA.navigateToPickingPose();
 	// Tilt Camera procedure
-	nodeA.TiltCamera();
+	//nodeA.TiltCamera();
 
     // send goal to Node_B to detect a pickable object and pick it
 	nodeA.Picking();

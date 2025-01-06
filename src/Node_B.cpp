@@ -19,14 +19,19 @@
 #include <tf2_ros/transform_listener.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
 // import fro camera tilt
+#include <actionlib/client/simple_action_client.h>
+#include <control_msgs/FollowJointTrajectoryAction.h>
 #include <trajectory_msgs/JointTrajectory.h>
 #include <trajectory_msgs/JointTrajectoryPoint.h>
+
+typedef actionlib::SimpleActionClient<control_msgs::FollowJointTrajectoryAction> TrajectoryClient;
 
 class NodeB
 {
 	public:
 
-		NodeB() {
+		NodeB() : head_client("/head_controller/follow_joint_trajectory", true)
+        {
 			// Initialize the service server
 			service_ = nh_.advertiseService("picking", &NodeB::DetectionCallback, this);
 			ROS_INFO("Node_B server is up and ready to receive requests.");
@@ -39,6 +44,9 @@ class NodeB
             // to be ready to detect aprilTags
             tilt_cam_pub = nh_.advertise<trajectory_msgs::JointTrajectory>("/head_controller/command", 10);
             activated = false;
+            // Wait for the action server to be available
+            ROS_INFO("Waiting for head action server to start...");
+            head_client.waitForServer();
 		}
 
 	private:
@@ -57,6 +65,7 @@ class NodeB
         tf2_ros::Buffer tf_buffer;
         ros::Publisher tilt_cam_pub; // publisher for the initial tilt of the camera
         std::vector<moveit_msgs::CollisionObject> collision_objects;
+        TrajectoryClient head_client;
 
 
 		// Callback for the service
@@ -67,7 +76,9 @@ class NodeB
             collision_objects.clear();
             CollisionTable();
 			activated = true;
+            ros::Duration(1.0).sleep();
             MoveCamera();
+
             activated = false;
             ros::topic::waitForMessage<moveit_msgs::PlanningScene>("/move_group/monitored_planning_scene", ros::Duration(5.0));
             bool success = planning_scene_interface.applyCollisionObjects(collision_objects);
@@ -234,52 +245,123 @@ class NodeB
             bool success = planning_scene_interface.applyCollisionObjects(collision_objects);
 
             if(success){
-                    ROS_INFO("Successfully added Table collision object ID: %s", id);
+                    ROS_INFO("Successfully added Table collision object");
                 }
             else{
-                ROS_WARN("Failed to add Table collision object ID: %s", id);
+                ROS_WARN("Failed to add Table collision object");
             }
         }
 
+        /*
+        void MoveCamera(double pan, double tilt){
+            ros::Rate loop_rate(10);
+            ros::Time start_time = ros::Time::now(); // Record the start time
+
+            while (ros::ok() && (ros::Time::now() - start_time).toSec() < 2.0) {
+                // Create a JointTrajectory message
+                trajectory_msgs::JointTrajectory joint_trajectory_msg;
+                joint_trajectory_msg.joint_names.push_back("head_1_joint"); // Add the pan joint
+                joint_trajectory_msg.joint_names.push_back("head_2_joint"); // Add the tilt joint
+
+                // Create a trajectory point
+                trajectory_msgs::JointTrajectoryPoint point;
+                point.positions.push_back(pan); // Pan position (e.g., 0 radians)
+                point.positions.push_back(tilt); // Tilt position (e.g., 0.2 radians)
+                point.velocities.push_back(0.0); // Pan velocity
+                point.velocities.push_back(0.0); // Tilt velocity
+                point.time_from_start = ros::Duration(1.0); // Duration for the motion
+
+                // Add the point to the trajectory
+                joint_trajectory_msg.points.push_back(point);
+
+                // Publish the message
+                tilt_cam_pub.publish(joint_trajectory_msg);
+
+                ros::spinOnce();
+                loop_rate.sleep();
+            }
+        }*/
         void MoveCamera() {
+            // Set initial pan and tilt values (e.g., 0 radians for pan, 45 degrees down for tilt)
+            double initial_pan = 0.0; // Pan in radians (0 radians is center)
+            double initial_tilt = -M_PI / 4.0; // Tilt in radians (-45 degrees)
+            
+            // Create a FollowJointTrajectoryGoal message (for control_msgs)
+            control_msgs::FollowJointTrajectoryGoal goal;
+            goal.trajectory.joint_names.push_back("head_1_joint"); // Pan joint
+            goal.trajectory.joint_names.push_back("head_2_joint"); // Tilt joint
 
-            // Wait for subscribers to /head_controller/command
-            while (tilt_cam_pub.getNumSubscribers() == 0 && ros::ok()) {
-                ros::Duration(0.5).sleep();
-            }
+            // Define the sequence of trajectory points
+            std::vector<trajectory_msgs::JointTrajectoryPoint> points;
 
-            // Initialize the trajectory command
-            trajectory_msgs::JointTrajectory tilt_cmd;
-            tilt_cmd.joint_names = {"head_1_joint", "head_2_joint"};
+            // Start position: 45 degrees down (initial tilt position)
+            trajectory_msgs::JointTrajectoryPoint start_point;
+            start_point.positions.push_back(initial_pan); // Keep the initial pan
+            start_point.positions.push_back(initial_tilt); // 45 degrees down
+            start_point.time_from_start = ros::Duration(2.0); // Move to this position in 2 seconds
+            points.push_back(start_point);
+             // Add all points to the trajectory message
+            goal.trajectory.points = points;
+            // Send the goal (trajectory message)
+            head_client.sendGoal(goal);
+            points.clear();
+            head_client.waitForResult(ros::Duration(7.0));
 
-            // Define a set of positions to cover the table
-            std::vector<std::pair<double, double>> head_positions = {
-                {-1.0, 0.0}, // Left
-                {0.0, 0.3}, // Slightly up-left
-                {1.0, 0.0}, // Slightly up-center
-                {1.0, 0.0}, // Slightly up-right
-                {0.0, -0.3}, // Right
-                {-1.0, 0.0} // Center
-                
-            };
 
-			std::vector<double> times = {1.0, 2.0, 3.0, 4.0, 5.0}; // Time-from-start for each point
 
-			for (size_t i = 0; i < head_positions.size(); ++i) {
-				trajectory_msgs::JointTrajectoryPoint point;
-				point.positions = head_positions[i];
-				point.time_from_start = ros::Duration(times[i]);
-				tilt_cmd.points.push_back(point);
-			}
+            // Look slightly left
+            trajectory_msgs::JointTrajectoryPoint left_point;
+            left_point.positions.push_back(initial_pan - 0.3); // Pan slightly to the left
+            left_point.positions.push_back(initial_tilt + 0.2); // Slightly raise the head
+            left_point.time_from_start = ros::Duration(2.0); // 2 seconds later
+            points.push_back(left_point);
+             // Add all points to the trajectory message
+            goal.trajectory.points = points;
+            // Send the goal (trajectory message)
+            head_client.sendGoal(goal);
+            points.clear();
+            head_client.waitForResult(ros::Duration(7.0));
 
-			// Publish the trajectory
-			pub.publish(tilt_cmd);
-			ROS_INFO("Trajectory published!");
+            // Look slightly up
+            trajectory_msgs::JointTrajectoryPoint up_point;
+            up_point.positions.push_back(initial_pan); // Return to center pan
+            up_point.positions.push_back(initial_tilt + 0.4); // Raise head further
+            up_point.time_from_start = ros::Duration(2.0); // 2 seconds later
+            points.push_back(up_point);
+             // Add all points to the trajectory message
+            goal.trajectory.points = points;
+            // Send the goal (trajectory message)
+            head_client.sendGoal(goal);
+            points.clear();
+            head_client.waitForResult(ros::Duration(7.0));
 
-			// Keep the node alive for a short while to ensure the message is sent
-			ros::Duration(2.0).sleep();
+            // Look slightly right
+            trajectory_msgs::JointTrajectoryPoint right_point;
+            right_point.positions.push_back(initial_pan + 0.3); // Pan slightly to the right
+            right_point.positions.push_back(initial_tilt + 0.2); // Lower head slightly
+            right_point.time_from_start = ros::Duration(2.0); // 2 seconds later
+            points.push_back(right_point);
+             // Add all points to the trajectory message
+            goal.trajectory.points = points;
+            // Send the goal (trajectory message)
+            head_client.sendGoal(goal);
+            points.clear();
+            head_client.waitForResult(ros::Duration(7.0));
 
+            // Return to center position
+            trajectory_msgs::JointTrajectoryPoint center_point;
+            center_point.positions.push_back(initial_pan); // Center pan
+            center_point.positions.push_back(initial_tilt); // Return to initial tilt
+            center_point.time_from_start = ros::Duration(2.0); // 2 seconds later
+            points.push_back(center_point);
+             // Add all points to the trajectory message
+            goal.trajectory.points = points;
+            // Send the goal (trajectory message)
+            head_client.sendGoal(goal);
+            points.clear();
+            head_client.waitForResult(ros::Duration(7.0));
         }
+
 
 };
 
