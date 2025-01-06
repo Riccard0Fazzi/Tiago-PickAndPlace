@@ -263,24 +263,22 @@ class NodeB
                 
             };
 
-            for (const auto& position : head_positions) {
-                // Create a trajectory point for each position
-                trajectory_msgs::JointTrajectoryPoint point;
-                point.positions = {position.first, position.second}; // {pan, tilt}
-                point.time_from_start = ros::Duration(1.0); // Duration for the movement
+			std::vector<double> times = {1.0, 2.0, 3.0, 4.0, 5.0}; // Time-from-start for each point
 
-                // Clear previous points and add the new point
-                tilt_cmd.points.clear();
-                tilt_cmd.points.push_back(point);
+			for (size_t i = 0; i < head_positions.size(); ++i) {
+				trajectory_msgs::JointTrajectoryPoint point;
+				point.positions = head_positions[i];
+				point.time_from_start = ros::Duration(times[i]);
+				tilt_cmd.points.push_back(point);
+			}
 
-                // Publish the tilt command
-                tilt_cam_pub.publish(tilt_cmd);
+			// Publish the trajectory
+			pub.publish(tilt_cmd);
+			ROS_INFO("Trajectory published!");
 
-                // Wait for Tiago to complete the movement
-                ros::Duration(2.0).sleep();
-            }
+			// Keep the node alive for a short while to ensure the message is sent
+			ros::Duration(2.0).sleep();
 
-            // Feedback or logging can be added here if needed
         }
 
 };
