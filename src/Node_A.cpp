@@ -61,7 +61,7 @@ public:
 
         // PICKING POSE
         goal.target_pose.pose.position.x = 7.83904; // x-coordinate
-        goal.target_pose.pose.position.y = -3.71049; // y-coordinate
+        goal.target_pose.pose.position.y = -3.81049; // y-coordinate
         goal.target_pose.pose.orientation.z = 0.7071; // sin(π/4)
         goal.target_pose.pose.orientation.w = 0.7071; // cos(π/4)
 		
@@ -122,7 +122,7 @@ public:
 
    }
 
-   void TiltCamera(){
+    void TiltCamera(){
 		// define rate for the initialization operation
 		ros::Rate cam_init_r(1);
 		// waiting for subscribers to /head_controller/command

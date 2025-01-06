@@ -9,6 +9,7 @@
 #include <apriltag_ros/AprilTagDetectionArray.h>
 #include <geometry_msgs/TransformStamped.h>
 #include <geometry_msgs/PoseStamped.h>
+#include <string>
 #include <cstdint>
 // import for moveIt 
 #include <moveit/planning_scene_interface/planning_scene_interface.h>
@@ -17,6 +18,9 @@
 // import for TF
 #include <tf2_ros/transform_listener.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
+// import fro camera tilt
+#include <trajectory_msgs/JointTrajectory.h>
+#include <trajectory_msgs/JointTrajectoryPoint.h>
 
 class NodeB
 {
@@ -25,15 +29,16 @@ class NodeB
 		NodeB() {
 			// Initialize the service server
 			service_ = nh_.advertiseService("picking", &NodeB::DetectionCallback, this);
-			ROS_INFO("Node_B server is ready to receive requests.");
+			ROS_INFO("Node_B server is up and ready to receive requests.");
 			// Subscriber of image_transport type for Tiago Camera-Visual topic (essages rate: 30 Hz)
             image_transport::ImageTransport it(nh_); // image transport for the camera topic
             image_sub = it.subscribe("/xtion/rgb/image_color", 100, &NodeB::tiagoEyesCallback, this);
             // Subscriber to the AprilTag detection topic (messages rate: 20 Hz)
             object_detection_sub = nh_.subscribe("/tag_detections", 10, &NodeB::ObjectDetectionCallback, this);
-            // TF
-            //tf2_ros::TransformListener tf_listener(tf_buffer);
-
+            // publisher for the initial tilt of the camera 
+            // to be ready to detect aprilTags
+            tilt_cam_pub = nh_.advertise<trajectory_msgs::JointTrajectory>("/head_controller/command", 10);
+            activated = false;
 		}
 
 	private:
@@ -43,7 +48,6 @@ class NodeB
 		// Service server
 		ros::ServiceServer service_;
 		// vector for storing the detected objects frames
-		std::vector<geometry_msgs::PoseStamped> detected_objects;
 		ros::Subscriber object_detection_sub; // subscriber for apriltag detection
 		image_transport::Subscriber image_sub; // subscriber for camera
 		bool activated; // variable to trigger the detection of the objects
@@ -51,14 +55,28 @@ class NodeB
         moveit::planning_interface::PlanningSceneInterface planning_scene_interface;
         int id;
         tf2_ros::Buffer tf_buffer;
+        ros::Publisher tilt_cam_pub; // publisher for the initial tilt of the camera
+        std::vector<moveit_msgs::CollisionObject> collision_objects;
 
 
 		// Callback for the service
 		bool DetectionCallback(ir2425_group_24_a2::picking::Request &req, ir2425_group_24_a2::picking::Response &res) {
-			ROS_INFO("Received request from Node_A!");
-            detected_objects.clear();
+			
+            ROS_INFO("Received request from Node_A!");
+            // Clear the vector
+            collision_objects.clear();
             CollisionTable();
 			activated = true;
+            MoveCamera();
+            activated = false;
+            ros::topic::waitForMessage<moveit_msgs::PlanningScene>("/move_group/monitored_planning_scene", ros::Duration(5.0));
+            bool success = planning_scene_interface.applyCollisionObjects(collision_objects);
+            if(success){
+                ROS_INFO("Successfully added all collision objects");
+            }
+            else{
+                ROS_WARN("Failed to add the collision objects");
+            }
 
 			// Process the request and populate the response
 			res.picked_obj_id = id; 
@@ -102,17 +120,21 @@ class NodeB
             // callBack always running, saving detected poses only when required
             if (activated) {
                 id = msg->detections[0].id[0];
+                for(const auto& object : collision_objects){
+                    if(stoi(object.id)==id){
+                        return;
+                    }
+                }
 				geometry_msgs::PoseStamped frame;
 				frame.header.seq = static_cast<uint32_t>(id); // saving ID
                 frame.header.frame_id = msg->detections[0].pose.header.frame_id; // Get frame_id from the detection
 				ROS_INFO("Detected object ID: %u",frame.header.seq);
 				frame.pose.position = msg->detections[0].pose.pose.pose.position; // saving position
-				frame.pose.orientation = msg->detections[0].pose.pose.pose.orientation;// saving orientation
-                activated = false;	
+				frame.pose.orientation = msg->detections[0].pose.pose.pose.orientation;// saving orientation	
                 // Add as collision object
                 moveit_msgs::CollisionObject collision_object;
                 collision_object.header.frame_id = "map";  // Use map frame
-                collision_object.id = "Object_" + std::to_string(id);
+                collision_object.id = std::to_string(id);
 
                 // from camera frame to map frame 
                 // Define a transform from the camera frame (or detected frame) to the map frame
@@ -148,7 +170,7 @@ class NodeB
                     primitive.dimensions.resize(2);
                     primitive.dimensions[0] = 0.25; // Height of the cylinder
                     primitive.dimensions[1] = 0.055; // Radius of the cylinder
-                    frame_in_map.pose.position.z -= 0.1;
+                    frame_in_map.pose.position.z -= 0.125;
                 } else if(id <= 6) { // cube
                     primitive.type = shape_msgs::SolidPrimitive::BOX;
                     primitive.dimensions.resize(3);
@@ -170,16 +192,7 @@ class NodeB
                 collision_object.operation = moveit_msgs::CollisionObject::ADD;
 
                 // Add to the planning scene
-                std::vector<moveit_msgs::CollisionObject> collision_objects;
                 collision_objects.push_back(collision_object);
-                ros::topic::waitForMessage<moveit_msgs::PlanningScene>("/move_group/monitored_planning_scene", ros::Duration(5.0));
-                bool success = planning_scene_interface.applyCollisionObjects(collision_objects);
-                if(success){
-                    ROS_INFO("Successfully added collision object ID: %d", id);
-                }
-                else{
-                    ROS_WARN("Failed to add collision object ID: %d", id);
-                }
             }
 		}
 
@@ -187,7 +200,7 @@ class NodeB
             std::vector<moveit_msgs::CollisionObject> collision_objects;
 
             // Table dimensions (slightly larger than real ones for safety)
-            double table_size = 0.9; // Slightly larger than the actual 0.9m
+            double table_size = 0.760574; 
 
             // Pick-up table
             moveit_msgs::CollisionObject pickup_table;
@@ -205,8 +218,8 @@ class NodeB
             // Define the pose
             geometry_msgs::Pose pickup_table_pose;
             pickup_table_pose.position.x = 7.83904; // Adjust based on the workspace
-            pickup_table_pose.position.y = -2.91049; // Adjust based on the workspace
-            pickup_table_pose.position.z = 0.45; // Half the height of the table for the center point
+            pickup_table_pose.position.y = -3.11049; // Adjust based on the workspace
+            pickup_table_pose.position.z = table_size/2; // Half the height of the table for the center point
 
             // Assign primitive and pose to the collision object
             pickup_table.primitives.push_back(pickup_table_primitive);
@@ -221,11 +234,53 @@ class NodeB
             bool success = planning_scene_interface.applyCollisionObjects(collision_objects);
 
             if(success){
-                    ROS_INFO("Successfully added Table collision object ID: %d", id);
+                    ROS_INFO("Successfully added Table collision object ID: %s", id);
                 }
             else{
-                ROS_WARN("Failed to add Table collision object ID: %d", id);
+                ROS_WARN("Failed to add Table collision object ID: %s", id);
             }
+        }
+
+        void MoveCamera() {
+
+            // Wait for subscribers to /head_controller/command
+            while (tilt_cam_pub.getNumSubscribers() == 0 && ros::ok()) {
+                ros::Duration(0.5).sleep();
+            }
+
+            // Initialize the trajectory command
+            trajectory_msgs::JointTrajectory tilt_cmd;
+            tilt_cmd.joint_names = {"head_1_joint", "head_2_joint"};
+
+            // Define a set of positions to cover the table
+            std::vector<std::pair<double, double>> head_positions = {
+                {-1.0, 0.0}, // Left
+                {0.0, 0.3}, // Slightly up-left
+                {1.0, 0.0}, // Slightly up-center
+                {1.0, 0.0}, // Slightly up-right
+                {0.0, -0.3}, // Right
+                {-1.0, 0.0} // Center
+                
+            };
+
+            for (const auto& position : head_positions) {
+                // Create a trajectory point for each position
+                trajectory_msgs::JointTrajectoryPoint point;
+                point.positions = {position.first, position.second}; // {pan, tilt}
+                point.time_from_start = ros::Duration(1.0); // Duration for the movement
+
+                // Clear previous points and add the new point
+                tilt_cmd.points.clear();
+                tilt_cmd.points.push_back(point);
+
+                // Publish the tilt command
+                tilt_cam_pub.publish(tilt_cmd);
+
+                // Wait for Tiago to complete the movement
+                ros::Duration(2.0).sleep();
+            }
+
+            // Feedback or logging can be added here if needed
         }
 
 };
