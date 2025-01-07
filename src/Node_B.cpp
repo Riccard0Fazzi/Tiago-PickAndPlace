@@ -66,6 +66,7 @@ class NodeB
         ros::Publisher tilt_cam_pub; // publisher for the initial tilt of the camera
         std::vector<moveit_msgs::CollisionObject> collision_objects;
         TrajectoryClient head_client;
+		bool first_detection = true;
 
 
 		// Callback for the service
@@ -73,28 +74,23 @@ class NodeB
 			
             ROS_INFO("Received request from Node_A!");
             // Clear the vector
-            collision_objects.clear();
-            CollisionTable();
-			activated = true;
-            ros::Duration(1.0).sleep();
-            MoveCamera();
-
-            activated = false;
-            ros::topic::waitForMessage<moveit_msgs::PlanningScene>("/move_group/monitored_planning_scene", ros::Duration(5.0));
-            bool success = planning_scene_interface.applyCollisionObjects(collision_objects);
-            if(success){
-                ROS_INFO("Successfully added all collision objects");
-            }
-            else{
-                ROS_WARN("Failed to add the collision objects");
-            }
-
-			// Process the request and populate the response
-			res.picked_obj_id = id; 
-			ROS_INFO("Object ID = %d picking action completed", res.picked_obj_id);
-
+			if(first_detection)
+			{
+            	CollisionTable();
+				first_detection=false;
+			}
+			if(req.detection)
+			{
+				activated = true;
+				ros::Duration(1.0).sleep();
+				activated = false;
+				ros::topic::waitForMessage<moveit_msgs::PlanningScene>("/move_group/monitored_planning_scene", ros::Duration(5.0));
+				bool success = planning_scene_interface.applyCollisionObjects(collision_objects);
+				if(success) ROS_INFO("Successfully added collision objects");
+				else ROS_WARN("Failed to add the collision objects");
+			}
 			return true;
-		}
+        }
 		
 		// CallBack to display Tiago's view
         // ______________________________________________
@@ -109,9 +105,9 @@ class NodeB
                 int down_height = img.rows/2;
                 cv::Mat resized_down;
                 //resize down
-                resize(img, resized_down, cv::Size(down_width, down_height), cv::INTER_LINEAR);
+                //resize(img, resized_down, cv::Size(down_width, down_height), cv::INTER_LINEAR);
                         // Display the image
-                        cv::imshow("Tiago Eyes", resized_down);
+                        cv::imshow("Tiago Eyes", img);
                         cv::waitKey(1);
             } catch (cv_bridge::Exception& e) {
                 ROS_ERROR("Could not convert from '%s' to 'rgb8'.", msg->encoding.c_str());
@@ -285,7 +281,7 @@ class NodeB
             // Set initial pan and tilt values (e.g., 0 radians for pan, 45 degrees down for tilt)
             double initial_pan = 0.0; // Pan in radians (0 radians is center)
             double initial_tilt = -M_PI / 4.0; // Tilt in radians (-45 degrees)
-            
+			ros::Rate rate(100); // 10 Hz loop
             // Create a FollowJointTrajectoryGoal message (for control_msgs)
             control_msgs::FollowJointTrajectoryGoal goal;
             goal.trajectory.joint_names.push_back("head_1_joint"); // Pan joint
@@ -297,21 +293,17 @@ class NodeB
             // Start position: 45 degrees down (initial tilt position)
             trajectory_msgs::JointTrajectoryPoint start_point;
             start_point.positions.push_back(initial_pan); // Keep the initial pan
-            start_point.positions.push_back(-0.78); // 45 degrees down
-            start_point.time_from_start = ros::Duration(1.0); // Move to this position in 2 seconds
+            start_point.positions.push_back(initial_tilt); // 45 degrees down
+            start_point.time_from_start = ros::Duration(2.0); // Move to this position in 2 seconds
             points.push_back(start_point);
              // Add all points to the trajectory message
             goal.trajectory.points = points;
             // Send the goal (trajectory message)
             head_client.sendGoal(goal);
-			ros::Rate rate(10); // 10 Hz loop
 			while (!head_client.waitForResult(ros::Duration(0.1))) {
 				ros::spinOnce(); // Allow processing of other callbacks
 				rate.sleep();
 			}
-			if (head_client.getState() == actionlib::SimpleClientGoalState::SUCCEEDED) ROS_INFO("Head movement succeeded.");
-			else ROS_WARN("Head movement failed.");
-	
 
             points.clear();
 
@@ -330,8 +322,6 @@ class NodeB
 				ros::spinOnce(); // Allow processing of other callbacks
 				rate.sleep();
 			}
-			if (head_client.getState() == actionlib::SimpleClientGoalState::SUCCEEDED) ROS_INFO("Head movement succeeded.");
-			else ROS_WARN("Head movement failed.");
 			
             points.clear();
 
@@ -349,8 +339,6 @@ class NodeB
 				ros::spinOnce(); // Allow processing of other callbacks
 				rate.sleep();
 			}
-			if (head_client.getState() == actionlib::SimpleClientGoalState::SUCCEEDED) ROS_INFO("Head movement succeeded.");
-			else ROS_WARN("Head movement failed.");
 			
             points.clear();
 
@@ -368,8 +356,6 @@ class NodeB
 				ros::spinOnce(); // Allow processing of other callbacks
 				rate.sleep();
 			}
-			if (head_client.getState() == actionlib::SimpleClientGoalState::SUCCEEDED) ROS_INFO("Head movement succeeded.");
-			else ROS_WARN("Head movement failed.");
 			
             points.clear();
 
@@ -387,8 +373,6 @@ class NodeB
 				ros::spinOnce(); // Allow processing of other callbacks
 				rate.sleep();
 			}
-			if (head_client.getState() == actionlib::SimpleClientGoalState::SUCCEEDED) ROS_INFO("Head movement succeeded.");
-			else ROS_WARN("Head movement failed.");
 	
             points.clear();
         }
