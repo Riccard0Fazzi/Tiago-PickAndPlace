@@ -297,16 +297,23 @@ class NodeB
             // Start position: 45 degrees down (initial tilt position)
             trajectory_msgs::JointTrajectoryPoint start_point;
             start_point.positions.push_back(initial_pan); // Keep the initial pan
-            start_point.positions.push_back(initial_tilt); // 45 degrees down
-            start_point.time_from_start = ros::Duration(2.0); // Move to this position in 2 seconds
+            start_point.positions.push_back(-0.78); // 45 degrees down
+            start_point.time_from_start = ros::Duration(1.0); // Move to this position in 2 seconds
             points.push_back(start_point);
              // Add all points to the trajectory message
             goal.trajectory.points = points;
             // Send the goal (trajectory message)
             head_client.sendGoal(goal);
-            points.clear();
-            head_client.waitForResult(ros::Duration(7.0));
+			ros::Rate rate(10); // 10 Hz loop
+			while (!head_client.waitForResult(ros::Duration(0.1))) {
+				ros::spinOnce(); // Allow processing of other callbacks
+				rate.sleep();
+			}
+			if (head_client.getState() == actionlib::SimpleClientGoalState::SUCCEEDED) ROS_INFO("Head movement succeeded.");
+			else ROS_WARN("Head movement failed.");
+	
 
+            points.clear();
 
 
             // Look slightly left
@@ -319,8 +326,14 @@ class NodeB
             goal.trajectory.points = points;
             // Send the goal (trajectory message)
             head_client.sendGoal(goal);
+			while (!head_client.waitForResult(ros::Duration(0.1))) {
+				ros::spinOnce(); // Allow processing of other callbacks
+				rate.sleep();
+			}
+			if (head_client.getState() == actionlib::SimpleClientGoalState::SUCCEEDED) ROS_INFO("Head movement succeeded.");
+			else ROS_WARN("Head movement failed.");
+			
             points.clear();
-            head_client.waitForResult(ros::Duration(7.0));
 
             // Look slightly up
             trajectory_msgs::JointTrajectoryPoint up_point;
@@ -332,8 +345,14 @@ class NodeB
             goal.trajectory.points = points;
             // Send the goal (trajectory message)
             head_client.sendGoal(goal);
+			while (!head_client.waitForResult(ros::Duration(0.1))) {
+				ros::spinOnce(); // Allow processing of other callbacks
+				rate.sleep();
+			}
+			if (head_client.getState() == actionlib::SimpleClientGoalState::SUCCEEDED) ROS_INFO("Head movement succeeded.");
+			else ROS_WARN("Head movement failed.");
+			
             points.clear();
-            head_client.waitForResult(ros::Duration(7.0));
 
             // Look slightly right
             trajectory_msgs::JointTrajectoryPoint right_point;
@@ -345,8 +364,14 @@ class NodeB
             goal.trajectory.points = points;
             // Send the goal (trajectory message)
             head_client.sendGoal(goal);
+			while (!head_client.waitForResult(ros::Duration(0.1))) {
+				ros::spinOnce(); // Allow processing of other callbacks
+				rate.sleep();
+			}
+			if (head_client.getState() == actionlib::SimpleClientGoalState::SUCCEEDED) ROS_INFO("Head movement succeeded.");
+			else ROS_WARN("Head movement failed.");
+			
             points.clear();
-            head_client.waitForResult(ros::Duration(7.0));
 
             // Return to center position
             trajectory_msgs::JointTrajectoryPoint center_point;
@@ -358,8 +383,14 @@ class NodeB
             goal.trajectory.points = points;
             // Send the goal (trajectory message)
             head_client.sendGoal(goal);
+			while (!head_client.waitForResult(ros::Duration(0.1))) {
+				ros::spinOnce(); // Allow processing of other callbacks
+				rate.sleep();
+			}
+			if (head_client.getState() == actionlib::SimpleClientGoalState::SUCCEEDED) ROS_INFO("Head movement succeeded.");
+			else ROS_WARN("Head movement failed.");
+	
             points.clear();
-            head_client.waitForResult(ros::Duration(7.0));
         }
 
 
