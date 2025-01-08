@@ -1,8 +1,10 @@
 #include <ros/ros.h>
+#include <std_msgs/Bool.h>
 #include <actionlib/client/simple_action_client.h> 
 #include <move_base_msgs/MoveBaseAction.h> // to navigate Tiago
 #include <tiago_iaslab_simulation/Coeffs.h> // to request m,q from /straight_line_srv
-#include <ir2425_group_24_a2/picking.h>
+#include <ir2425_group_24_a2/detection.h>
+#include <ir2425_group_24_a2/picking_completed.h>
 #include <trajectory_msgs/JointTrajectory.h>
 #include <trajectory_msgs/JointTrajectoryPoint.h>
 
@@ -16,11 +18,9 @@ public:
     // CONSTRUCTOR
     NodeA(ros::NodeHandle& nh)
         : client_(nh.serviceClient<tiago_iaslab_simulation::Coeffs>("/straight_line_srv")), // service client to the straight line service
-          move_base_client_("/move_base", true), // action client to the move_base action server
-		  picking_client_(nh.serviceClient<ir2425_group_24_a2::picking>("picking")) // service client to the Node_B server
+          move_base_client_("/move_base", true) // action client to the move_base action server
     {
         ROS_INFO("Node A initialized and ready to call /straight_line_srv service.");
-
         // Wait for the move_base action server to start
         ROS_INFO("Waiting for the /move_base action server to start...");
         move_base_client_.waitForServer();
@@ -28,20 +28,32 @@ public:
 		// publisher for the initial tilt of the camera 
 		// to be ready to detect aprilTags
 		tilt_cam_pub = nh.advertise<trajectory_msgs::JointTrajectory>("/head_controller/command", 10);
+		detection_pub = nh.advertise<ir2425_group_24_a2::detection>("/start_detection", 10);
+		picking_sub = nh.subscribe("/picking_terminated", 10, &NodeA::PickingTerminatedCallBack, this);
 		// set up the two routines 
 		initialize_routines(); 
     }
 
-    void initialize_routines()
+	void PickingTerminatedCallBack(const ir2425_group_24_a2::picking_completed::ConstPtr& msg)
+	{
+		if(msg->picking_completed)
+		{
+			ROS_INFO("Picking completed!");
+			ROS_INFO("Starting placing procedure");
+			return;
+		}
+	}
+
+	void initialize_routines()
     {
-        // ROUTINE A to reach the task space (table)
+        // ROUTINE A
         // ___________________________________________________________
         // (from initial pose to picking pose)
 		move_base_msgs::MoveBaseGoal goal; 
 		goal.target_pose.header.frame_id = "map"; // Use the map frame
 		
 		// OUT OF CORRIDOR 
-        goal.target_pose.pose.position.x = 6.8; // x-coordinate
+        goal.target_pose.pose.position.x = 6.83904; // x-coordinate
         goal.target_pose.pose.position.y = 0.0; // y-coordinate
         goal.target_pose.pose.position.z = 0.0; // z-coordinate
         goal.target_pose.pose.orientation.x = 0.0;
@@ -51,94 +63,77 @@ public:
 		
 		routineA.push_back(goal);
  
-		// TABLE APPROACH
-        goal.target_pose.pose.position.x = 6.8; // x-coordinate
-        goal.target_pose.pose.position.y = -3.0; // y-coordinate
+		// lower WAY-CORNER
+        goal.target_pose.pose.position.x = 6.83904; // x-coordinate
+        goal.target_pose.pose.position.y = -4.01049; // y-coordinate
         goal.target_pose.pose.orientation.z = 0.0; // sin(π)
         goal.target_pose.pose.orientation.w = 1.0; // cos(π) 
 		
 		routineA.push_back(goal);
 
-        // STARTING POSE OF DETECTION ROUTINE
-        goal.target_pose.pose.position.x = 7.1; // x-coordinate
-        goal.target_pose.pose.position.y = -3.0; // y-coordinate
-        goal.target_pose.pose.orientation.z = 0.0; // sin(π/4)
-        goal.target_pose.pose.orientation.w = 1.0; // cos(π/4)
+        // PICKING POSE
+        goal.target_pose.pose.position.x = 7.83904; // x-coordinate
+        goal.target_pose.pose.position.y = -3.81049; // y-coordinate
+        goal.target_pose.pose.orientation.z = 0.7071; // sin(π/4)
+        goal.target_pose.pose.orientation.w = 0.7071; // cos(π/4)
 		
 		routineA.push_back(goal);
 
-        // DETECTION ROUTINE
+        // ROUTINE B (loop)
         // ________________________________________________________
-        // navigation around the table to detect all the objects
+        // (from picking pose to placing pose and viceversa)
 
-        // 1
+		// PICKING POSE orientation
+		goal.target_pose.pose.position.x = 7.83904; // x-coordinate
+        goal.target_pose.pose.position.y = -3.71049; // y-coordinate
+        goal.target_pose.pose.orientation.z = 0.0; // sin(π/4)
+        goal.target_pose.pose.orientation.w = 1.0; // cos(π/4)
+		
+		routineB.push_back(goal);
+
+        // upper WAY-CORNER
+        goal.target_pose.pose.position.x = 8.83904; // x-coordinate
+        goal.target_pose.pose.position.y = -4.01049; // y-coordinate
+        goal.target_pose.pose.orientation.z = 0.7071; // sin(π/4)
+        goal.target_pose.pose.orientation.w = 0.7071; // cos(π/4)
+		
+		routineB.push_back(goal);
+
+        // PLACING POSE
+        goal.target_pose.pose.position.x = 8.53904; // x-coordinate
+        goal.target_pose.pose.position.y = -1.85049; // y-coordinate
+        goal.target_pose.pose.orientation.z = 1.0; // sin(π/4)
+        goal.target_pose.pose.orientation.w = 0.0; // cos(π/4)
+
+		routineB.push_back(goal);
+
+        // POST PLACING ORIENTATION
+        goal.target_pose.pose.position.x = 8.53904;; // x-coordinate
+        goal.target_pose.pose.position.y = -1.85049; // y-coordinate
         goal.target_pose.pose.orientation.z = -0.7071; // sin(π/4)
         goal.target_pose.pose.orientation.w = 0.7071; // cos(π/4)
 		
 		routineB.push_back(goal);
 
-        // 2
-        goal.target_pose.pose.position.y = -3.8; // y-coordinate
+        // upper WAY-CORNER
+        goal.target_pose.pose.position.x = 8.83904; // x-coordinate
+        goal.target_pose.pose.position.y = -4.01049; // y-coordinate
+        goal.target_pose.pose.orientation.z = 1.0; // sin(π/4)
+        goal.target_pose.pose.orientation.w = 0.0; // cos(π/4)
 		
 		routineB.push_back(goal);
 
-        // 3
-        goal.target_pose.pose.orientation.z = 0.3827; // sin(π/4)
-        goal.target_pose.pose.orientation.w = 0.9239; // cos(π/4)
-
-		routineB.push_back(goal);
-
-        // 4 
-        goal.target_pose.pose.orientation.z = 0.0; // sin(π/4)
-        goal.target_pose.pose.orientation.w = 1.0; // cos(π/4)
-
-		routineB.push_back(goal);
-
-        // 5 
-        goal.target_pose.pose.position.x = 7.8; // x-coordinate
-		routineB.push_back(goal);
-
-		// 6
-		goal.target_pose.pose.orientation.z = 0.7071; // sin(π/4)
-        goal.target_pose.pose.orientation.w = -0.7071; // cos(π/4)
-		routineB.push_back(goal);
-
-		// 7
-		goal.target_pose.pose.orientation.z = -0.0; // sin(π/4)
-        goal.target_pose.pose.orientation.w = 1.0; // cos(π/4)
-		routineB.push_back(goal);
-
-		// 8
-		goal.target_pose.pose.position.x = 8.5; // x-coordinate
-		routineB.push_back(goal);
-
-		// 9
-		goal.target_pose.pose.orientation.z = 0.9239; // sin(π/4)
-        goal.target_pose.pose.orientation.w = 0.3827; // cos(π/4)
-
-		routineB.push_back(goal);
-
-		// 10
-		goal.target_pose.pose.orientation.z = 0.7071; // sin(π/4)
-        goal.target_pose.pose.orientation.w = -0.7071; // cos(π/4)
-		routineB.push_back(goal);
-	
-		// 11
-        goal.target_pose.pose.position.y = -3.0; // y-coordinate
-		routineB.push_back(goal);
-/*
-		// PICKING POSE
+        // PICKING POSE
         goal.target_pose.pose.position.x = 7.83904; // x-coordinate
         goal.target_pose.pose.position.y = -3.71049; // y-coordinate
         goal.target_pose.pose.orientation.z = 0.7071; // sin(π/4)
         goal.target_pose.pose.orientation.w = 0.7071; // cos(π/4)
 		
 		routineB.push_back(goal);
-*/
+
 
    }
-
-    void TiltCamera(){
+        void MoveHead(double pan, double tilt){
 		// define rate for the initialization operation
 		ros::Rate cam_init_r(1);
 		// waiting for subscribers to /head_controller/command
@@ -151,7 +146,7 @@ public:
 		trajectory_msgs::JointTrajectoryPoint point;
 		// set the tilt command
 		tilt_cmd.joint_names = {"head_1_joint","head_2_joint"};
-		point.positions = {0.0,-1.0};
+		point.positions = {pan,tilt};
 		point.time_from_start = ros::Duration(1.0);
 		tilt_cmd.points.push_back(point);
 		// send the tilt command to Tiago
@@ -199,33 +194,37 @@ public:
         }
     }
 
-	// PICKING method
-    // __________________________________________________
-    // method to request the /picking server to detect
-	// a pickable object and then start the picking action
-    // in Node_C server, once the picking action is completed
-	// the method terminates
-    void Picking(bool detection)
-    {
-        // Create a service request and response object
-		ir2425_group_24_a2::picking srv;
+	void DetectionRoutine()
+	{
+		ir2425_group_24_a2::detection msg;
+		msg.activate_detection = true;
+		msg.start_picking = false;
+		// Tilt Camera procedure
+		MoveHead(0.0,-0.6);
+		ros::Duration(2.0).sleep(); // Time to move the camera
+		detection_pub.publish(msg);
+		ros::spinOnce();
+		ros::Duration(2.0).sleep(); // Time to detect
 
-        // Set the 'activate_detection' field in the request
-        srv.request.detection = detection;
+		MoveHead(-0.8,-0.0);
+		ros::Duration(2.0).sleep(); // Time to move the camera
+		detection_pub.publish(msg);
+		ros::spinOnce();
+		ros::Duration(2.0).sleep(); // Time to detect
 
-        // Call the service
-        if (picking_client_.call(srv))
-        {
-            ROS_INFO("/picking service called successfully.");
-            ROS_INFO("Picked object ID = %d",srv.response.picked_obj_id);
-        }
-        else
-        {
-            ROS_ERROR("Failed to call /picking service");
-        }
-    }
+		MoveHead(0.8,0.0);
+		ros::Duration(2.0).sleep(); // Time to move the camera
+		detection_pub.publish(msg);
+		ros::spinOnce();
+		ros::Duration(2.0).sleep(); // Time to detect
+
+		msg.activate_detection = false;
+		msg.start_picking = true;
+		detection_pub.publish(msg);
+		ros::spinOnce();
 
 
+	}
 
     // PICKING POSE NAVIGATION method
     // __________________________________________________
@@ -253,32 +252,6 @@ public:
 			ROS_WARN("The robot failed to reach the Picking Pose.");
     }
 
-    void detectionRoutine()
-    {
-		bool detection = true;
-		for (size_t i = 0; i < routineB.size(); ++i) {
-
-            routineB[i].target_pose.header.stamp = ros::Time::now() + ros::Duration(0.1);
-			// Navigation to the Picking Pose
-			ROS_INFO("[Navigation] x = %f, y = %f", routineB[i].target_pose.pose.position.x, routineB[i].target_pose.pose.position.y);
-
-			// Send the goal to move_base
-			move_base_client_.sendGoal(routineB[i]);
-			// wait for the result
-			move_base_client_.waitForResult();
-			Picking(detection);
-            // wait for stable routine
-            ros::Duration(0.5).sleep();
-		}
-		
-		if (move_base_client_.getState() == actionlib::SimpleClientGoalState::SUCCEEDED)
-			ROS_INFO("The robot reached the Picking Pose successfully.");
-		else
-			ROS_WARN("The robot failed to reach the Picking Pose.");
-    }
-
-
-
 private:
 
     // CLASS VARIABLES
@@ -290,6 +263,9 @@ private:
     std::vector<move_base_msgs::MoveBaseGoal> routineA; // first routine to get tiago from initial pose to picking pose
     std::vector<move_base_msgs::MoveBaseGoal> routineB; // second routine to move tiago from picking pose to placing pose and viceversa
 	ros::Publisher tilt_cam_pub; // publisher for the initial tilt of the camera
+	ros::Publisher detection_pub; // Publisher to send commands to NodeB
+	ros::Subscriber picking_sub;   // Subscriber to listen to status updates from NodeB
+	
 };
 
 int main(int argc, char** argv)
@@ -298,20 +274,17 @@ int main(int argc, char** argv)
     ros::NodeHandle nh;
 
     NodeA nodeA(nh); // Node_A constructor
+	// Get m and q
+	nodeA.callLineService();
 
-    // Get m and q
-    nodeA.callLineService();
+	// Navigate to the Picking Pose
+	nodeA.navigateToPickingPose();
 
-    // Navigate to the Picking Pose
-    nodeA.navigateToPickingPose();
-	// Tilt Camera procedure
-	nodeA.TiltCamera();
-
-    // send goal to Node_B to detect a pickable object and pick it
+	nodeA.DetectionRoutine();
+       // send goal to Node_B to detect a pickable object and pick it
     // send goal to Node_C to pick that object and 
     // manipulate it for transportation
 
-	nodeA.detectionRoutine();
     // Navigate to the Placing Pose
 
     // detect AprilTag ID=10 for the placing frame

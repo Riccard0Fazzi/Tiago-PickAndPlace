@@ -1,5 +1,7 @@
 #include <ros/ros.h>
-#include <ir2425_group_24_a2/picking.h>
+#include <std_msgs/Bool.h>
+#include <ir2425_group_24_a2/picking_completed.h>
+#include <ir2425_group_24_a2/detection.h>
 // import for tiago eyes callback
 #include <sensor_msgs/Image.h>
 #include <cv_bridge/cv_bridge.h>
@@ -33,7 +35,6 @@ class NodeB
 		NodeB() : head_client("/head_controller/follow_joint_trajectory", true)
         {
 			// Initialize the service server
-			service_ = nh_.advertiseService("picking", &NodeB::DetectionCallback, this);
 			ROS_INFO("Node_B server is up and ready to receive requests.");
 			// Subscriber of image_transport type for Tiago Camera-Visual topic (essages rate: 30 Hz)
             image_transport::ImageTransport it(nh_); // image transport for the camera topic
@@ -47,7 +48,28 @@ class NodeB
             // Wait for the action server to be available
             ROS_INFO("Waiting for head action server to start...");
             head_client.waitForServer();
+			picking_pub = nh_.advertise<ir2425_group_24_a2::picking_completed>("/picking_terminated", 10);
+            activate_detection_sub = nh_.subscribe("/start_detection", 10, &NodeB::ActivateDetectionCallBack, this);
 		}
+		// Callback for the service
+		void ActivateDetectionCallBack(const ir2425_group_24_a2::detection::ConstPtr& msg) {
+			if(msg->activate_detection)
+			{
+				activated = true;
+				ros::Duration(1.0).sleep();
+				activated = false;
+				return;
+			}
+			else{
+				CollisionTable();
+				ros::topic::waitForMessage<moveit_msgs::PlanningScene>("/move_group/monitored_planning_scene", ros::Duration(5.0));
+				bool success = planning_scene_interface.applyCollisionObjects(collision_objects);
+				if(success) ROS_INFO("Successfully added collision objects");
+				else ROS_WARN("Failed to add the collision objects");
+				return;
+			}
+		}
+
 
 	private:
 
@@ -66,32 +88,10 @@ class NodeB
         ros::Publisher tilt_cam_pub; // publisher for the initial tilt of the camera
         std::vector<moveit_msgs::CollisionObject> collision_objects;
         TrajectoryClient head_client;
-		bool first_detection = true;
+		ros::Publisher picking_pub;
+		ros::Subscriber activate_detection_sub;
 
-
-		// Callback for the service
-		bool DetectionCallback(ir2425_group_24_a2::picking::Request &req, ir2425_group_24_a2::picking::Response &res) {
-			
-            ROS_INFO("Received request from Node_A!");
-            // Clear the vector
-			if(first_detection)
-			{
-            	CollisionTable();
-				first_detection=false;
-			}
-			if(req.detection)
-			{
-				activated = true;
-				ros::Duration(1.0).sleep();
-				activated = false;
-				ros::topic::waitForMessage<moveit_msgs::PlanningScene>("/move_group/monitored_planning_scene", ros::Duration(5.0));
-				bool success = planning_scene_interface.applyCollisionObjects(collision_objects);
-				if(success) ROS_INFO("Successfully added collision objects");
-				else ROS_WARN("Failed to add the collision objects");
-			}
-			return true;
-        }
-		
+				
 		// CallBack to display Tiago's view
         // ______________________________________________
         // [VISUAL PURPOSE ONLY]
