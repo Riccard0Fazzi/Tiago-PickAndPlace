@@ -147,6 +147,7 @@ public:
             // Tilt Camera procedure
             detection_pub.publish(msg);
             ros::spinOnce();
+            ros::Duration(2.0).sleep();
 
             // Define pan and tilt points
             std::vector<std::pair<double, double>> positions = {

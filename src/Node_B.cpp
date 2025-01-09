@@ -212,9 +212,9 @@ class NodeB
 
             // Define the pose
             geometry_msgs::Pose pickup_table_pose;
-            pickup_table_pose.position.x = 7.83904; // Adjust based on the workspace
+            pickup_table_pose.position.x = 7.78904; // Adjust based on the workspace
             pickup_table_pose.position.y = -3.01049; // Adjust based on the workspace
-            pickup_table_pose.position.z = table_size/2; // Half the height of the table for the center point
+            pickup_table_pose.position.z = 0.38; // Half the height of the table for the center point
 
             // Assign primitive and pose to the collision object
             pickup_table.primitives.push_back(pickup_table_primitive);
