@@ -21,7 +21,8 @@ public:
     NodeA(ros::NodeHandle& nh)
         : client_(nh.serviceClient<tiago_iaslab_simulation::Coeffs>("/straight_line_srv")), // service client to the straight line service
           move_base_client_("/move_base", true), // action client to the move_base action server
-          head_client("/head_controller/follow_joint_trajectory", true)
+          head_client("/head_controller/follow_joint_trajectory", true),
+          torso_client_("/torso_controller/follow_joint_trajectory", true) 
     {
         ROS_INFO("Node A initialized and ready to call /straight_line_srv service.");
         // Wait for the move_base action server to start
@@ -36,6 +37,10 @@ public:
         // Wait for the action server to be available
         ROS_INFO("Waiting for head action server to start...");
         head_client.waitForServer();
+         // Wait for the action server to start
+        ROS_INFO("Waiting for torso controller action server...");
+        torso_client_.waitForServer();
+        ROS_INFO("Connected to torso controller action server.");
 		// set up the two routines 
 		initialize_routines(); 
     }
@@ -142,23 +147,29 @@ public:
 
     void Detection() {
             ir2425_group_24_a2::detection msg;
-            msg.activate_detection = true;
-            msg.start_picking = false;
-            // Tilt Camera procedure
-            detection_pub.publish(msg);
-            ros::spinOnce();
-            ros::Duration(2.0).sleep();
+           
 
             // Define pan and tilt points
             std::vector<std::pair<double, double>> positions = {
-                {0.0, -M_PI / 4.0},  // Initial position (center, 45 degrees down)
-                {-0.3, -M_PI / 4.0 + 0.2},  // Slightly left
-                {0.3, -M_PI / 4.0 + 0.2},  // Slightly right
-                {0.0, -M_PI / 4.0}         // Return to center
+                {0.0, -M_PI / 3.0},        // Look down 60 degrees
+                {-M_PI / 7.2, 0.0},        // Look left 25 degrees (maintaining down as 1)
+                {M_PI / 3.6, 0.0},         // Look right 50 degrees (from the previous position, maintaining down as 1)
+                {-M_PI / 7.2, 0.0}         // Look left 25 degrees (returning to initial position, maintaining down as 1)
             };
 
             // Iterate through the positions
+            bool skip_first = false;
             for (const auto& pos : positions) {
+                if(skip_first)
+                {
+                    msg.activate_detection = true;
+                    msg.start_picking = false;
+                    // Tilt Camera procedure
+                    detection_pub.publish(msg);
+                    ros::spinOnce();
+                    ros::Duration(2.0).sleep();
+                }
+                skip_first = true;
                 // Create a FollowJointTrajectoryGoal message
                 control_msgs::FollowJointTrajectoryGoal goal;
                 goal.trajectory.joint_names = {"head_1_joint", "head_2_joint"};
@@ -166,7 +177,7 @@ public:
                 // Create a trajectory point
                 trajectory_msgs::JointTrajectoryPoint point;
                 point.positions = {pos.first, pos.second};  // Set pan and tilt
-                point.time_from_start = ros::Duration(2.0);  // 1 second to reach the position
+                point.time_from_start = ros::Duration(1.0);  // 1 second to reach the position
                 goal.trajectory.points.push_back(point);
 
                 // Send the goal
@@ -256,6 +267,31 @@ public:
 		else
 			ROS_WARN("The robot failed to reach the Picking Pose.");
     }
+   
+    void liftTorso() {
+        // Define the goal for lifting the torso
+        control_msgs::FollowJointTrajectoryGoal goal;
+        goal.trajectory.joint_names.push_back("torso_lift_joint");
+
+        trajectory_msgs::JointTrajectoryPoint point;
+        point.positions.push_back(0.34); // Maximum extension of the torso
+        point.time_from_start = ros::Duration(2.0); // 5 seconds to reach the position
+
+        goal.trajectory.points.push_back(point);
+        goal.trajectory.header.stamp = ros::Time::now();
+
+        // Send the goal
+        ROS_INFO("Sending torso lift goal...");
+        torso_client_.sendGoal(goal);
+
+        // Wait for the result
+        torso_client_.waitForResult();
+        if (torso_client_.getState() == actionlib::SimpleClientGoalState::SUCCEEDED) {
+            ROS_INFO("Successfully lifted torso to maximum extension.");
+        } else {
+            ROS_ERROR("Failed to lift torso.");
+        }
+    }
 
 private:
 
@@ -271,6 +307,7 @@ private:
 	ros::Publisher detection_pub; // Publisher to send commands to NodeB
 	ros::Subscriber picking_sub;   // Subscriber to listen to status updates from NodeB
     TrajectoryClient head_client;
+    TrajectoryClient torso_client_;
 	
 };
 
@@ -285,6 +322,8 @@ int main(int argc, char** argv)
 
 	// Navigate to the Picking Pose
 	nodeA.navigateToPickingPose();
+
+    nodeA.liftTorso();
 
 	nodeA.Detection();
     // send goal to Node_B to detect a pickable object and pick it

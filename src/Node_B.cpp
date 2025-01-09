@@ -26,12 +26,11 @@ class NodeB
 {
 	public:
 
-		NodeB() 
+		explicit NodeB(ros::NodeHandle &nh) : nh_(nh), it(nh_), tf_listener(tf_buffer)
         {
 			// Initialize the service server
 			ROS_INFO("Node_B server is up and ready to receive requests.");
 			// Subscriber of image_transport type for Tiago Camera-Visual topic (essages rate: 30 Hz)
-            image_transport::ImageTransport it(nh_); // image transport for the camera topic
             image_sub = it.subscribe("/xtion/rgb/image_color", 100, &NodeB::tiagoEyesCallback, this);
             // Subscriber to the AprilTag detection topic (messages rate: 20 Hz)
             object_detection_sub = nh_.subscribe("/tag_detections", 10, &NodeB::ObjectDetectionCallback, this);
@@ -47,6 +46,8 @@ class NodeB
 			if(msg->activate_detection)
 			{
 				activated = true;
+                ros::Duration(1.0).sleep();
+                activated = false;
 				return;
 			}
 			else if(msg->start_picking){
@@ -63,8 +64,10 @@ class NodeB
 
 	private:
 
-		// Node handle
-		ros::NodeHandle nh_;
+        ros::NodeHandle &nh_;
+         image_transport::ImageTransport it;
+        tf2_ros::Buffer tf_buffer;
+        tf2_ros::TransformListener tf_listener;
 		// Service server
 		ros::ServiceServer service_;
 		// vector for storing the detected objects frames
@@ -74,7 +77,6 @@ class NodeB
         // Initialize MoveIt Planning Scene Interface
         moveit::planning_interface::PlanningSceneInterface planning_scene_interface;
         int id;
-        tf2_ros::Buffer tf_buffer;
         std::vector<moveit_msgs::CollisionObject> collision_objects;
 		ros::Publisher picking_pub;
 		ros::Subscriber activate_detection_sub;
@@ -155,29 +157,32 @@ class NodeB
                     rate.sleep();
                     
                 }
+                frame_in_map.pose.orientation.x = 0;
+                frame_in_map.pose.orientation.y = 0;
+
 
                 // Define collision object shape (e.g., cylinder for hexagonal prism)
                 shape_msgs::SolidPrimitive primitive;
                 if (id <= 3) {  // Hexagonal prism
                     primitive.type = shape_msgs::SolidPrimitive::CYLINDER;
                     primitive.dimensions.resize(2);
-                    primitive.dimensions[0] = 0.24;  // Increased height
+                    primitive.dimensions[0] = 0.22;  // Increased height
                     primitive.dimensions[1] = 0.055; // Increased radius
-                    frame_in_map.pose.position.z -= 0.12;  // Updated z-correction
+                    frame_in_map.pose.position.z = 0.90+0.11;  // Updated z-correction
                 } else if (id <= 6) { // Cube
                     primitive.type = shape_msgs::SolidPrimitive::BOX;
                     primitive.dimensions.resize(3);
                     primitive.dimensions[0] = 0.055; // Increased X size
                     primitive.dimensions[1] = 0.055; // Increased Y size
                     primitive.dimensions[2] = 0.055; // Increased Z size
-                    frame_in_map.pose.position.z -= 0.0275;  // Updated z-correction
+                    frame_in_map.pose.position.z = 0.90+0.0275;  // Updated z-correction
                 } else { // Triangular prism
                     primitive.type = shape_msgs::SolidPrimitive::BOX;
                     primitive.dimensions.resize(3);
                     primitive.dimensions[0] = 0.077;  // Increased X size (Length)
                     primitive.dimensions[1] = 0.055;  // Increased Y size (Base)
                     primitive.dimensions[2] = 0.0385; // Increased Z size (Height)
-                    frame_in_map.pose.position.z -= 0.01925;  // Updated z-correction
+                    frame_in_map.pose.position.z = 0.90+0.01925;  // Updated z-correction
                 }
 
 
@@ -208,13 +213,13 @@ class NodeB
             pickup_table_primitive.dimensions.resize(3);
             pickup_table_primitive.dimensions[0] = table_size; // Length
             pickup_table_primitive.dimensions[1] = table_size; // Width
-            pickup_table_primitive.dimensions[2] = 0.76; // Height
+            pickup_table_primitive.dimensions[2] = 0.90; // Height
 
             // Define the pose
             geometry_msgs::Pose pickup_table_pose;
             pickup_table_pose.position.x = 7.78904; // Adjust based on the workspace
             pickup_table_pose.position.y = -3.01049; // Adjust based on the workspace
-            pickup_table_pose.position.z = 0.38; // Half the height of the table for the center point
+            pickup_table_pose.position.z = 0.45; // Half the height of the table for the center point
 
             // Assign primitive and pose to the collision object
             pickup_table.primitives.push_back(pickup_table_primitive);
@@ -243,12 +248,15 @@ class NodeB
 int main(int argc, char **argv) {
     // Initialize the ROS node
     ros::init(argc, argv, "Node_B");
-
+    ros::Rate rate(20);
+    ros::NodeHandle nh;
     // Create an instance of the server class
-    NodeB node_b_server;
+    NodeB node_b_server(nh);
 
-    // Spin to process incoming requests
-    ros::spin();
+    while (ros::ok()) {
+        ros::spinOnce(); // Process callbacks
+        rate.sleep();
+    }
 
     return 0;
 }
