@@ -20,19 +20,13 @@
 // import for TF
 #include <tf2_ros/transform_listener.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
-// import fro camera tilt
-#include <actionlib/client/simple_action_client.h>
-#include <control_msgs/FollowJointTrajectoryAction.h>
-#include <trajectory_msgs/JointTrajectory.h>
-#include <trajectory_msgs/JointTrajectoryPoint.h>
 
-typedef actionlib::SimpleActionClient<control_msgs::FollowJointTrajectoryAction> TrajectoryClient;
 
 class NodeB
 {
 	public:
 
-		NodeB() : head_client("/head_controller/follow_joint_trajectory", true)
+		NodeB() 
         {
 			// Initialize the service server
 			ROS_INFO("Node_B server is up and ready to receive requests.");
@@ -42,25 +36,20 @@ class NodeB
             // Subscriber to the AprilTag detection topic (messages rate: 20 Hz)
             object_detection_sub = nh_.subscribe("/tag_detections", 10, &NodeB::ObjectDetectionCallback, this);
             // publisher for the initial tilt of the camera 
-            // to be ready to detect aprilTags
-            tilt_cam_pub = nh_.advertise<trajectory_msgs::JointTrajectory>("/head_controller/command", 10);
             activated = false;
-            // Wait for the action server to be available
-            ROS_INFO("Waiting for head action server to start...");
-            head_client.waitForServer();
 			picking_pub = nh_.advertise<ir2425_group_24_a2::picking_completed>("/picking_terminated", 10);
             activate_detection_sub = nh_.subscribe("/start_detection", 10, &NodeB::ActivateDetectionCallBack, this);
 		}
-		// Callback for the service
+
+
+		// Callback for message from NodeA
 		void ActivateDetectionCallBack(const ir2425_group_24_a2::detection::ConstPtr& msg) {
 			if(msg->activate_detection)
 			{
 				activated = true;
-				ros::Duration(1.0).sleep();
-				activated = false;
 				return;
 			}
-			else{
+			else if(msg->start_picking){
 				CollisionTable();
 				ros::topic::waitForMessage<moveit_msgs::PlanningScene>("/move_group/monitored_planning_scene", ros::Duration(5.0));
 				bool success = planning_scene_interface.applyCollisionObjects(collision_objects);
@@ -68,6 +57,7 @@ class NodeB
 				else ROS_WARN("Failed to add the collision objects");
 				return;
 			}
+            return;
 		}
 
 
@@ -85,9 +75,7 @@ class NodeB
         moveit::planning_interface::PlanningSceneInterface planning_scene_interface;
         int id;
         tf2_ros::Buffer tf_buffer;
-        ros::Publisher tilt_cam_pub; // publisher for the initial tilt of the camera
         std::vector<moveit_msgs::CollisionObject> collision_objects;
-        TrajectoryClient head_client;
 		ros::Publisher picking_pub;
 		ros::Subscriber activate_detection_sub;
 
@@ -168,30 +156,30 @@ class NodeB
                     
                 }
 
-
-
                 // Define collision object shape (e.g., cylinder for hexagonal prism)
                 shape_msgs::SolidPrimitive primitive;
-                if (id <= 3) {  // hexagonal prism
+                if (id <= 3) {  // Hexagonal prism
                     primitive.type = shape_msgs::SolidPrimitive::CYLINDER;
                     primitive.dimensions.resize(2);
-                    primitive.dimensions[0] = 0.25; // Height of the cylinder
-                    primitive.dimensions[1] = 0.055; // Radius of the cylinder
-                    frame_in_map.pose.position.z -= 0.125;
-                } else if(id <= 6) { // cube
+                    primitive.dimensions[0] = 0.24;  // Increased height
+                    primitive.dimensions[1] = 0.055; // Increased radius
+                    frame_in_map.pose.position.z -= 0.12;  // Updated z-correction
+                } else if (id <= 6) { // Cube
                     primitive.type = shape_msgs::SolidPrimitive::BOX;
                     primitive.dimensions.resize(3);
-                    primitive.dimensions[0] = 0.055; // X size
-                    primitive.dimensions[1] = 0.055; // Y size
-                    primitive.dimensions[2] = 0.055; // Z size
-                    frame_in_map.pose.position.z -= 0.025;
-                } else { // triangualr prism
+                    primitive.dimensions[0] = 0.055; // Increased X size
+                    primitive.dimensions[1] = 0.055; // Increased Y size
+                    primitive.dimensions[2] = 0.055; // Increased Z size
+                    frame_in_map.pose.position.z -= 0.0275;  // Updated z-correction
+                } else { // Triangular prism
                     primitive.type = shape_msgs::SolidPrimitive::BOX;
                     primitive.dimensions.resize(3);
-                    primitive.dimensions[0] = 0.075; // X size
-                    primitive.dimensions[1] = 0.055; // Y size
-                    primitive.dimensions[2] = 0.0355; // Z size
+                    primitive.dimensions[0] = 0.077;  // Increased X size (Length)
+                    primitive.dimensions[1] = 0.055;  // Increased Y size (Base)
+                    primitive.dimensions[2] = 0.0385; // Increased Z size (Height)
+                    frame_in_map.pose.position.z -= 0.01925;  // Updated z-correction
                 }
+
 
                 // Assign pose
                 collision_object.primitives.push_back(primitive);
@@ -207,7 +195,7 @@ class NodeB
             std::vector<moveit_msgs::CollisionObject> collision_objects;
 
             // Table dimensions (slightly larger than real ones for safety)
-            double table_size = 0.760574; 
+            double table_size = 0.95; 
 
             // Pick-up table
             moveit_msgs::CollisionObject pickup_table;
@@ -220,12 +208,12 @@ class NodeB
             pickup_table_primitive.dimensions.resize(3);
             pickup_table_primitive.dimensions[0] = table_size; // Length
             pickup_table_primitive.dimensions[1] = table_size; // Width
-            pickup_table_primitive.dimensions[2] = table_size; // Height
+            pickup_table_primitive.dimensions[2] = 0.76; // Height
 
             // Define the pose
             geometry_msgs::Pose pickup_table_pose;
             pickup_table_pose.position.x = 7.83904; // Adjust based on the workspace
-            pickup_table_pose.position.y = -3.11049; // Adjust based on the workspace
+            pickup_table_pose.position.y = -3.01049; // Adjust based on the workspace
             pickup_table_pose.position.z = table_size/2; // Half the height of the table for the center point
 
             // Assign primitive and pose to the collision object
@@ -248,134 +236,6 @@ class NodeB
             }
         }
 
-        /*
-        void MoveCamera(double pan, double tilt){
-            ros::Rate loop_rate(10);
-            ros::Time start_time = ros::Time::now(); // Record the start time
-
-            while (ros::ok() && (ros::Time::now() - start_time).toSec() < 2.0) {
-                // Create a JointTrajectory message
-                trajectory_msgs::JointTrajectory joint_trajectory_msg;
-                joint_trajectory_msg.joint_names.push_back("head_1_joint"); // Add the pan joint
-                joint_trajectory_msg.joint_names.push_back("head_2_joint"); // Add the tilt joint
-
-                // Create a trajectory point
-                trajectory_msgs::JointTrajectoryPoint point;
-                point.positions.push_back(pan); // Pan position (e.g., 0 radians)
-                point.positions.push_back(tilt); // Tilt position (e.g., 0.2 radians)
-                point.velocities.push_back(0.0); // Pan velocity
-                point.velocities.push_back(0.0); // Tilt velocity
-                point.time_from_start = ros::Duration(1.0); // Duration for the motion
-
-                // Add the point to the trajectory
-                joint_trajectory_msg.points.push_back(point);
-
-                // Publish the message
-                tilt_cam_pub.publish(joint_trajectory_msg);
-
-                ros::spinOnce();
-                loop_rate.sleep();
-            }
-        }*/
-        void MoveCamera() {
-            // Set initial pan and tilt values (e.g., 0 radians for pan, 45 degrees down for tilt)
-            double initial_pan = 0.0; // Pan in radians (0 radians is center)
-            double initial_tilt = -M_PI / 4.0; // Tilt in radians (-45 degrees)
-			ros::Rate rate(100); // 10 Hz loop
-            // Create a FollowJointTrajectoryGoal message (for control_msgs)
-            control_msgs::FollowJointTrajectoryGoal goal;
-            goal.trajectory.joint_names.push_back("head_1_joint"); // Pan joint
-            goal.trajectory.joint_names.push_back("head_2_joint"); // Tilt joint
-
-            // Define the sequence of trajectory points
-            std::vector<trajectory_msgs::JointTrajectoryPoint> points;
-
-            // Start position: 45 degrees down (initial tilt position)
-            trajectory_msgs::JointTrajectoryPoint start_point;
-            start_point.positions.push_back(initial_pan); // Keep the initial pan
-            start_point.positions.push_back(initial_tilt); // 45 degrees down
-            start_point.time_from_start = ros::Duration(2.0); // Move to this position in 2 seconds
-            points.push_back(start_point);
-             // Add all points to the trajectory message
-            goal.trajectory.points = points;
-            // Send the goal (trajectory message)
-            head_client.sendGoal(goal);
-			while (!head_client.waitForResult(ros::Duration(0.1))) {
-				ros::spinOnce(); // Allow processing of other callbacks
-				rate.sleep();
-			}
-
-            points.clear();
-
-
-            // Look slightly left
-            trajectory_msgs::JointTrajectoryPoint left_point;
-            left_point.positions.push_back(initial_pan - 0.3); // Pan slightly to the left
-            left_point.positions.push_back(initial_tilt + 0.2); // Slightly raise the head
-            left_point.time_from_start = ros::Duration(2.0); // 2 seconds later
-            points.push_back(left_point);
-             // Add all points to the trajectory message
-            goal.trajectory.points = points;
-            // Send the goal (trajectory message)
-            head_client.sendGoal(goal);
-			while (!head_client.waitForResult(ros::Duration(0.1))) {
-				ros::spinOnce(); // Allow processing of other callbacks
-				rate.sleep();
-			}
-			
-            points.clear();
-
-            // Look slightly up
-            trajectory_msgs::JointTrajectoryPoint up_point;
-            up_point.positions.push_back(initial_pan); // Return to center pan
-            up_point.positions.push_back(initial_tilt + 0.4); // Raise head further
-            up_point.time_from_start = ros::Duration(2.0); // 2 seconds later
-            points.push_back(up_point);
-             // Add all points to the trajectory message
-            goal.trajectory.points = points;
-            // Send the goal (trajectory message)
-            head_client.sendGoal(goal);
-			while (!head_client.waitForResult(ros::Duration(0.1))) {
-				ros::spinOnce(); // Allow processing of other callbacks
-				rate.sleep();
-			}
-			
-            points.clear();
-
-            // Look slightly right
-            trajectory_msgs::JointTrajectoryPoint right_point;
-            right_point.positions.push_back(initial_pan + 0.3); // Pan slightly to the right
-            right_point.positions.push_back(initial_tilt + 0.2); // Lower head slightly
-            right_point.time_from_start = ros::Duration(2.0); // 2 seconds later
-            points.push_back(right_point);
-             // Add all points to the trajectory message
-            goal.trajectory.points = points;
-            // Send the goal (trajectory message)
-            head_client.sendGoal(goal);
-			while (!head_client.waitForResult(ros::Duration(0.1))) {
-				ros::spinOnce(); // Allow processing of other callbacks
-				rate.sleep();
-			}
-			
-            points.clear();
-
-            // Return to center position
-            trajectory_msgs::JointTrajectoryPoint center_point;
-            center_point.positions.push_back(initial_pan); // Center pan
-            center_point.positions.push_back(initial_tilt); // Return to initial tilt
-            center_point.time_from_start = ros::Duration(2.0); // 2 seconds later
-            points.push_back(center_point);
-             // Add all points to the trajectory message
-            goal.trajectory.points = points;
-            // Send the goal (trajectory message)
-            head_client.sendGoal(goal);
-			while (!head_client.waitForResult(ros::Duration(0.1))) {
-				ros::spinOnce(); // Allow processing of other callbacks
-				rate.sleep();
-			}
-	
-            points.clear();
-        }
 
 
 };

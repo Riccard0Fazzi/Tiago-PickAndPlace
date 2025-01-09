@@ -1,15 +1,17 @@
 #include <ros/ros.h>
-#include <std_msgs/Bool.h>
 #include <actionlib/client/simple_action_client.h> 
 #include <move_base_msgs/MoveBaseAction.h> // to navigate Tiago
 #include <tiago_iaslab_simulation/Coeffs.h> // to request m,q from /straight_line_srv
 #include <ir2425_group_24_a2/detection.h>
 #include <ir2425_group_24_a2/picking_completed.h>
+// import fro camera tilt
+#include <control_msgs/FollowJointTrajectoryAction.h>
 #include <trajectory_msgs/JointTrajectory.h>
 #include <trajectory_msgs/JointTrajectoryPoint.h>
 
 // Alias for the move_base action client
 typedef actionlib::SimpleActionClient<move_base_msgs::MoveBaseAction> MoveBaseClient;
+typedef actionlib::SimpleActionClient<control_msgs::FollowJointTrajectoryAction> TrajectoryClient;
 
 class NodeA
 {
@@ -18,7 +20,8 @@ public:
     // CONSTRUCTOR
     NodeA(ros::NodeHandle& nh)
         : client_(nh.serviceClient<tiago_iaslab_simulation::Coeffs>("/straight_line_srv")), // service client to the straight line service
-          move_base_client_("/move_base", true) // action client to the move_base action server
+          move_base_client_("/move_base", true), // action client to the move_base action server
+          head_client("/head_controller/follow_joint_trajectory", true)
     {
         ROS_INFO("Node A initialized and ready to call /straight_line_srv service.");
         // Wait for the move_base action server to start
@@ -30,6 +33,9 @@ public:
 		tilt_cam_pub = nh.advertise<trajectory_msgs::JointTrajectory>("/head_controller/command", 10);
 		detection_pub = nh.advertise<ir2425_group_24_a2::detection>("/start_detection", 10);
 		picking_sub = nh.subscribe("/picking_terminated", 10, &NodeA::PickingTerminatedCallBack, this);
+        // Wait for the action server to be available
+        ROS_INFO("Waiting for head action server to start...");
+        head_client.waitForServer();
 		// set up the two routines 
 		initialize_routines(); 
     }
@@ -133,27 +139,57 @@ public:
 
 
    }
-        void MoveHead(double pan, double tilt){
-		// define rate for the initialization operation
-		ros::Rate cam_init_r(1);
-		// waiting for subscribers to /head_controller/command
-		while(tilt_cam_pub.getNumSubscribers() == 0 && ros::ok()){
-			cam_init_r.sleep();
-		}
-		// initialize object containing the command to
-		// send to Tiago
-		trajectory_msgs::JointTrajectory tilt_cmd;
-		trajectory_msgs::JointTrajectoryPoint point;
-		// set the tilt command
-		tilt_cmd.joint_names = {"head_1_joint","head_2_joint"};
-		point.positions = {pan,tilt};
-		point.time_from_start = ros::Duration(1.0);
-		tilt_cmd.points.push_back(point);
-		// send the tilt command to Tiago
-		tilt_cam_pub.publish(tilt_cmd);
-		// wait for Tiago to incline the camera ..
-		cam_init_r.sleep();
-		// publish feedback
+
+    void Detection() {
+            ir2425_group_24_a2::detection msg;
+            msg.activate_detection = true;
+            msg.start_picking = false;
+            // Tilt Camera procedure
+            detection_pub.publish(msg);
+            ros::spinOnce();
+
+            // Define pan and tilt points
+            std::vector<std::pair<double, double>> positions = {
+                {0.0, -M_PI / 4.0},  // Initial position (center, 45 degrees down)
+                {-0.3, -M_PI / 4.0 + 0.2},  // Slightly left
+                {0.3, -M_PI / 4.0 + 0.2},  // Slightly right
+                {0.0, -M_PI / 4.0}         // Return to center
+            };
+
+            // Iterate through the positions
+            for (const auto& pos : positions) {
+                // Create a FollowJointTrajectoryGoal message
+                control_msgs::FollowJointTrajectoryGoal goal;
+                goal.trajectory.joint_names = {"head_1_joint", "head_2_joint"};
+
+                // Create a trajectory point
+                trajectory_msgs::JointTrajectoryPoint point;
+                point.positions = {pos.first, pos.second};  // Set pan and tilt
+                point.time_from_start = ros::Duration(2.0);  // 1 second to reach the position
+                goal.trajectory.points.push_back(point);
+
+                // Send the goal
+                head_client.sendGoal(goal);
+
+                // Monitor the result while allowing callbacks to process
+                while (!head_client.waitForResult(ros::Duration(0.1))) {
+                    ros::spinOnce();  // Process other callbacks (e.g., Object Detection)
+                }
+
+                // Check if the goal was successfully executed
+                if (head_client.getState() != actionlib::SimpleClientGoalState::SUCCEEDED) {
+                    ROS_WARN("Failed to move camera to position: pan=%f, tilt=%f", pos.first, pos.second);
+                }
+                // Wait for one second before moving to the next position
+                ros::Duration(1.0).sleep();
+            }
+
+            ROS_INFO("Camera movement routine completed.");
+            msg.activate_detection = false;
+            msg.start_picking = true;
+            // Tilt Camera procedure
+            detection_pub.publish(msg);
+            ros::spinOnce();
     }
 
     // GET[m,q] method
@@ -194,38 +230,6 @@ public:
         }
     }
 
-	void DetectionRoutine()
-	{
-		ir2425_group_24_a2::detection msg;
-		msg.activate_detection = true;
-		msg.start_picking = false;
-		// Tilt Camera procedure
-		MoveHead(0.0,-0.6);
-		ros::Duration(2.0).sleep(); // Time to move the camera
-		detection_pub.publish(msg);
-		ros::spinOnce();
-		ros::Duration(2.0).sleep(); // Time to detect
-
-		MoveHead(-0.8,-0.0);
-		ros::Duration(2.0).sleep(); // Time to move the camera
-		detection_pub.publish(msg);
-		ros::spinOnce();
-		ros::Duration(2.0).sleep(); // Time to detect
-
-		MoveHead(0.8,0.0);
-		ros::Duration(2.0).sleep(); // Time to move the camera
-		detection_pub.publish(msg);
-		ros::spinOnce();
-		ros::Duration(2.0).sleep(); // Time to detect
-
-		msg.activate_detection = false;
-		msg.start_picking = true;
-		detection_pub.publish(msg);
-		ros::spinOnce();
-
-
-	}
-
     // PICKING POSE NAVIGATION method
     // __________________________________________________
     // method to navigate Tiago to the picking pose to be
@@ -265,6 +269,7 @@ private:
 	ros::Publisher tilt_cam_pub; // publisher for the initial tilt of the camera
 	ros::Publisher detection_pub; // Publisher to send commands to NodeB
 	ros::Subscriber picking_sub;   // Subscriber to listen to status updates from NodeB
+    TrajectoryClient head_client;
 	
 };
 
@@ -280,8 +285,8 @@ int main(int argc, char** argv)
 	// Navigate to the Picking Pose
 	nodeA.navigateToPickingPose();
 
-	nodeA.DetectionRoutine();
-       // send goal to Node_B to detect a pickable object and pick it
+	nodeA.Detection();
+    // send goal to Node_B to detect a pickable object and pick it
     // send goal to Node_C to pick that object and 
     // manipulate it for transportation
 

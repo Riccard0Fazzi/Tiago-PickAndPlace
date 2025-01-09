@@ -10,6 +10,7 @@ project(ir2425_group_24_a2)
 find_package(catkin REQUIRED COMPONENTS
                 roscpp
                 actionlib
+                actionlib_msgs
                 move_base_msgs
                 tiago_iaslab_simulation
 				std_msgs
@@ -23,6 +24,7 @@ find_package(catkin REQUIRED COMPONENTS
                 tf2
                 tf2_ros
                 tf2_geometry_msgs
+                control_msgs
 )
 
 find_package(OpenCV REQUIRED)
@@ -84,6 +86,7 @@ find_package(OpenCV REQUIRED)
 generate_messages(
    DEPENDENCIES
    std_msgs  # Or other packages containing msgs
+   actionlib_msgs
 )
 
 ################################################
@@ -130,6 +133,10 @@ catkin_package(
     tf2
     tf2_ros
     tf2_geometry_msgs
+    control_msgs
+    actionlib
+    actionlib_msgs
+
 
 #  DEPENDS system_lib
 )
@@ -232,7 +239,9 @@ include_directories(
 # catkin_add_nosetests(test)
 
 add_executable(Node_A src/Node_A.cpp)
+add_dependencies(Node_A ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 target_link_libraries(Node_A ${catkin_LIBRARIES})
 
 add_executable(Node_B src/Node_B.cpp)
+add_dependencies(Node_B ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 target_link_libraries(Node_B ${catkin_LIBRARIES} ${OpenCV_LIBRARIES})
