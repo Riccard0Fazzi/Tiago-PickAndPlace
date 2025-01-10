@@ -83,10 +83,10 @@ public:
 		routineA.push_back(goal);
 
         // PICKING POSE
-        goal.target_pose.pose.position.x = 7.83904; // x-coordinate
+        goal.target_pose.pose.position.x = 7.93904; // x-coordinate
         goal.target_pose.pose.position.y = -3.81049; // y-coordinate
-        goal.target_pose.pose.orientation.z = 0.7071; // sin(π/4)
-        goal.target_pose.pose.orientation.w = 0.7071; // cos(π/4)
+        goal.target_pose.pose.orientation.z = 0.7372; // sin(π/4)
+        goal.target_pose.pose.orientation.w = 0.6755; // cos(π/4)
 		
 		routineA.push_back(goal);
 

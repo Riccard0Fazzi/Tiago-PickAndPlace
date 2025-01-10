@@ -117,84 +117,85 @@ class NodeB
 
             // callBack always running, saving detected poses only when required
             if (activated) {
-                ROS_INFO("Apriltag detection callback called");
-                id = msg->detections[0].id[0];
-                for(const auto& object : collision_objects){
-                    if(stoi(object.id)==id){
-                        return;
-                    }
-                }
-				geometry_msgs::PoseStamped frame;
-				frame.header.seq = static_cast<uint32_t>(id); // saving ID
-                frame.header.frame_id = msg->detections[0].pose.header.frame_id; // Get frame_id from the detection
-				ROS_INFO("Detected object ID: %u",frame.header.seq);
-				frame.pose.position = msg->detections[0].pose.pose.pose.position; // saving position
-				frame.pose.orientation = msg->detections[0].pose.pose.pose.orientation;// saving orientation	
-                // Add as collision object
-                moveit_msgs::CollisionObject collision_object;
-                collision_object.header.frame_id = "map";  // Use map frame
-                collision_object.id = std::to_string(id);
-
-                // from camera frame to map frame 
-                // Define a transform from the camera frame (or detected frame) to the map frame
-                geometry_msgs::PoseStamped frame_in_map;
-
-                tf2_ros::TransformListener tf_listener(tf_buffer);
-
-                ros::Rate rate(100.0);  // Loop frequency in Hz
-                while (ros::ok()) {
-                    ROS_INFO("Waiting transform from map to %s",frame.header.frame_id.c_str());
-                    if(tf_buffer.canTransform("map", frame.header.frame_id, ros::Time::now(), ros::Duration(1.0))) {
-                        try {
-                            tf_buffer.transform(frame, frame_in_map, "map", ros::Duration(0.1));
-                            ROS_INFO("Successfully transformed frame from %s to map frame", frame.header.frame_id.c_str());
-                            break;  // Exit loop after successful transformation
-                        } catch (tf2::TransformException &ex) {
-                            ROS_WARN("Could not transform pose from %s to map frame: %s", frame.header.frame_id.c_str(), ex.what());
+                for(const auto& detection : msg->detections){
+                    id = detection.id[0];
+                    for(const auto& object : collision_objects){
+                        if(stoi(object.id)==id){
+                            return;
                         }
-                    } else {
-                        //ROS_WARN_THROTTLE(1.0, "Transform not available from %s to map frame. Retrying...", frame.header.frame_id.c_str());
                     }
-                    //ros::Duration(0.1).sleep();  // Sleep for 0.1 seconds between checks
-                    rate.sleep();
-                    
+                    geometry_msgs::PoseStamped frame;
+                    frame.header.seq = static_cast<uint32_t>(id); // saving ID
+                    frame.header.frame_id = detection.pose.header.frame_id; // Get frame_id from the detection
+                    ROS_INFO("Detected object ID: %u",frame.header.seq);
+                    frame.pose.position = detection.pose.pose.pose.position; // saving position
+                    frame.pose.orientation = detection.pose.pose.pose.orientation;// saving orientation	
+                    // Add as collision object
+                    moveit_msgs::CollisionObject collision_object;
+                    collision_object.header.frame_id = "map";  // Use map frame
+                    collision_object.id = std::to_string(id);
+
+                    // from camera frame to map frame 
+                    // Define a transform from the camera frame (or detected frame) to the map frame
+                    geometry_msgs::PoseStamped frame_in_map;
+
+                    tf2_ros::TransformListener tf_listener(tf_buffer);
+
+                    ros::Rate rate(100.0);  // Loop frequency in Hz
+                    while (ros::ok()) {
+                        ROS_INFO("Waiting transform from map to %s",frame.header.frame_id.c_str());
+                        if(tf_buffer.canTransform("map", frame.header.frame_id, ros::Time::now(), ros::Duration(1.0))) {
+                            try {
+                                tf_buffer.transform(frame, frame_in_map, "map", ros::Duration(0.1));
+                                ROS_INFO("Successfully transformed frame from %s to map frame", frame.header.frame_id.c_str());
+                                break;  // Exit loop after successful transformation
+                            } catch (tf2::TransformException &ex) {
+                                ROS_WARN("Could not transform pose from %s to map frame: %s", frame.header.frame_id.c_str(), ex.what());
+                            }
+                        } else {
+                            //ROS_WARN_THROTTLE(1.0, "Transform not available from %s to map frame. Retrying...", frame.header.frame_id.c_str());
+                        }
+                        //ros::Duration(0.1).sleep();  // Sleep for 0.1 seconds between checks
+                        rate.sleep();
+                        
+                    }
+                    frame_in_map.pose.orientation.x = 0;
+                    frame_in_map.pose.orientation.y = 0;
+
+
+                    // Define collision object shape (e.g., cylinder for hexagonal prism)
+                    shape_msgs::SolidPrimitive primitive;
+                    if (id <= 3) {  // Hexagonal prism
+                        primitive.type = shape_msgs::SolidPrimitive::CYLINDER;
+                        primitive.dimensions.resize(2);
+                        primitive.dimensions[0] = 0.22;  // Increased height
+                        primitive.dimensions[1] = 0.055; // Increased radius
+                        frame_in_map.pose.position.z = 0.90+0.11;  // Updated z-correction
+                    } else if (id <= 6) { // Cube
+                        primitive.type = shape_msgs::SolidPrimitive::BOX;
+                        primitive.dimensions.resize(3);
+                        primitive.dimensions[0] = 0.055; // Increased X size
+                        primitive.dimensions[1] = 0.055; // Increased Y size
+                        primitive.dimensions[2] = 0.055; // Increased Z size
+                        frame_in_map.pose.position.z = 0.90+0.0275;  // Updated z-correction
+                    } else { // Triangular prism
+                        primitive.type = shape_msgs::SolidPrimitive::BOX;
+                        primitive.dimensions.resize(3);
+                        primitive.dimensions[0] = 0.077;  // Increased X size (Length)
+                        primitive.dimensions[1] = 0.055;  // Increased Y size (Base)
+                        primitive.dimensions[2] = 0.0385; // Increased Z size (Height)
+                        frame_in_map.pose.position.z = 0.90+0.01925;  // Updated z-correction
+                    }
+
+
+                    // Assign pose
+                    collision_object.primitives.push_back(primitive);
+                    collision_object.primitive_poses.push_back(frame_in_map.pose);
+                    collision_object.operation = moveit_msgs::CollisionObject::ADD;
+
+                    // Add to the planning scene
+                    collision_objects.push_back(collision_object);
                 }
-                frame_in_map.pose.orientation.x = 0;
-                frame_in_map.pose.orientation.y = 0;
-
-
-                // Define collision object shape (e.g., cylinder for hexagonal prism)
-                shape_msgs::SolidPrimitive primitive;
-                if (id <= 3) {  // Hexagonal prism
-                    primitive.type = shape_msgs::SolidPrimitive::CYLINDER;
-                    primitive.dimensions.resize(2);
-                    primitive.dimensions[0] = 0.22;  // Increased height
-                    primitive.dimensions[1] = 0.055; // Increased radius
-                    frame_in_map.pose.position.z = 0.90+0.11;  // Updated z-correction
-                } else if (id <= 6) { // Cube
-                    primitive.type = shape_msgs::SolidPrimitive::BOX;
-                    primitive.dimensions.resize(3);
-                    primitive.dimensions[0] = 0.055; // Increased X size
-                    primitive.dimensions[1] = 0.055; // Increased Y size
-                    primitive.dimensions[2] = 0.055; // Increased Z size
-                    frame_in_map.pose.position.z = 0.90+0.0275;  // Updated z-correction
-                } else { // Triangular prism
-                    primitive.type = shape_msgs::SolidPrimitive::BOX;
-                    primitive.dimensions.resize(3);
-                    primitive.dimensions[0] = 0.077;  // Increased X size (Length)
-                    primitive.dimensions[1] = 0.055;  // Increased Y size (Base)
-                    primitive.dimensions[2] = 0.0385; // Increased Z size (Height)
-                    frame_in_map.pose.position.z = 0.90+0.01925;  // Updated z-correction
-                }
-
-
-                // Assign pose
-                collision_object.primitives.push_back(primitive);
-                collision_object.primitive_poses.push_back(frame_in_map.pose);
-                collision_object.operation = moveit_msgs::CollisionObject::ADD;
-
-                // Add to the planning scene
-                collision_objects.push_back(collision_object);
             }
 		}
 
@@ -219,7 +220,7 @@ class NodeB
 
             // Define the pose
             geometry_msgs::Pose pickup_table_pose;
-            pickup_table_pose.position.x = 7.78904; // Adjust based on the workspace
+            pickup_table_pose.position.x = 7.83904; // Adjust based on the workspace
             pickup_table_pose.position.y = -3.01049; // Adjust based on the workspace
             pickup_table_pose.position.z = 0.45; // Half the height of the table for the center point
 
