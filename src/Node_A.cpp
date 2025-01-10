@@ -146,63 +146,71 @@ public:
    }
 
     void Detection() {
-            ir2425_group_24_a2::detection msg;
-           
+        ir2425_group_24_a2::detection msg;
 
-            // Define pan and tilt points
-            std::vector<std::pair<double, double>> positions = {
-                {0.0, -M_PI / 3.0},        // Look down 60 degrees
-                {-M_PI / 7.2, 0.0},        // Look left 25 degrees (maintaining down as 1)
-                {M_PI / 3.6, 0.0},         // Look right 50 degrees (from the previous position, maintaining down as 1)
-                {-M_PI / 7.2, 0.0}         // Look left 25 degrees (returning to initial position, maintaining down as 1)
-            };
+        // Define pan and tilt points
+        std::vector<std::pair<double, double>> positions = {
+            {0.0, -M_PI / 3.0},        // Look down 60 degrees
+            {-M_PI / 7.2, 0.0},        // Look left 25 degrees (maintaining down as 1)
+            {M_PI / 3.6, 0.0},         // Look right 50 degrees (from the previous position, maintaining down as 1)
+            {-M_PI / 7.2, 0.0}         // Look left 25 degrees (returning to initial position, maintaining down as 1)
+        };
 
-            // Iterate through the positions
-            bool skip_first = false;
-            for (const auto& pos : positions) {
-                if(skip_first)
-                {
-                    msg.activate_detection = true;
-                    msg.start_picking = false;
-                    // Tilt Camera procedure
-                    detection_pub.publish(msg);
-                    ros::spinOnce();
-                    ros::Duration(2.0).sleep();
-                }
-                skip_first = true;
-                // Create a FollowJointTrajectoryGoal message
-                control_msgs::FollowJointTrajectoryGoal goal;
-                goal.trajectory.joint_names = {"head_1_joint", "head_2_joint"};
+        // Iterate through the positions
+        bool skip_first = false;
+        for (const auto& pos : positions) {
+            if (skip_first) {
+                msg.activate_detection = true;
+                msg.start_picking = false;
+                // Publish detection message 
+                ros::Time now = ros::Time::now();
+                ROS_INFO("Published msg at %.2f", now.toSec());
+                detection_pub.publish(msg);
+                ros::spinOnce();
+                ros::Duration(2.0).sleep();
+                msg.activate_detection = false;
+                detection_pub.publish(msg);
+                ros::spinOnce();
 
-                // Create a trajectory point
-                trajectory_msgs::JointTrajectoryPoint point;
-                point.positions = {pos.first, pos.second};  // Set pan and tilt
-                point.time_from_start = ros::Duration(1.0);  // 1 second to reach the position
-                goal.trajectory.points.push_back(point);
+            }
+            skip_first = true;
 
-                // Send the goal
-                head_client.sendGoal(goal);
+            // Create a FollowJointTrajectoryGoal message
+            control_msgs::FollowJointTrajectoryGoal goal;
+            goal.trajectory.joint_names = {"head_1_joint", "head_2_joint"};
 
-                // Monitor the result while allowing callbacks to process
-                while (!head_client.waitForResult(ros::Duration(0.1))) {
-                    ros::spinOnce();  // Process other callbacks (e.g., Object Detection)
-                }
+            // Create a trajectory point
+            trajectory_msgs::JointTrajectoryPoint point;
+            point.positions = {pos.first, pos.second};  // Set pan and tilt
+            point.time_from_start = ros::Duration(1.0);  // 1 second to reach the position
+            goal.trajectory.points.push_back(point);
 
-                // Check if the goal was successfully executed
-                if (head_client.getState() != actionlib::SimpleClientGoalState::SUCCEEDED) {
-                    ROS_WARN("Failed to move camera to position: pan=%f, tilt=%f", pos.first, pos.second);
-                }
-                // Wait for one second before moving to the next position
-                ros::Duration(1.0).sleep();
+            // Send the goal
+            head_client.sendGoal(goal);
+
+            // Monitor the result while allowing callbacks to process
+            while (!head_client.waitForResult(ros::Duration(0.1))) {
+                ros::spinOnce();  // Process other callbacks (e.g., Object Detection)
             }
 
-            ROS_INFO("Camera movement routine completed.");
-            msg.activate_detection = false;
-            msg.start_picking = true;
-            // Tilt Camera procedure
-            detection_pub.publish(msg);
-            ros::spinOnce();
+            // Check if the goal was successfully executed
+            if (head_client.getState() != actionlib::SimpleClientGoalState::SUCCEEDED) {
+                ROS_WARN("Failed to move camera to position: pan=%f, tilt=%f", pos.first, pos.second);
+            }
+            // Wait for one second before moving to the next position
+            ros::Duration(1.0).sleep();
+        }
+
+        ROS_INFO("Camera movement routine completed.");
+        msg.activate_detection = false;
+        msg.start_picking = true;
+
+        // Publish detection message 
+        detection_pub.publish(msg);
+        ros::spinOnce();
+
     }
+
 
     // GET[m,q] method
     // __________________________________________________

@@ -26,10 +26,11 @@ class NodeB
 {
 	public:
 
-		explicit NodeB(ros::NodeHandle &nh) : nh_(nh), it(nh_), tf_listener(tf_buffer)
+		NodeB()
         {
 			// Initialize the service server
 			ROS_INFO("Node_B server is up and ready to receive requests.");
+            image_transport::ImageTransport it(nh_);
 			// Subscriber of image_transport type for Tiago Camera-Visual topic (essages rate: 30 Hz)
             image_sub = it.subscribe("/xtion/rgb/image_color", 100, &NodeB::tiagoEyesCallback, this);
             // Subscriber to the AprilTag detection topic (messages rate: 20 Hz)
@@ -43,33 +44,33 @@ class NodeB
 
 		// Callback for message from NodeA
 		void ActivateDetectionCallBack(const ir2425_group_24_a2::detection::ConstPtr& msg) {
-			if(msg->activate_detection)
-			{
-				activated = true;
-                ros::Duration(1.0).sleep();
-                activated = false;
-				return;
-			}
-			else if(msg->start_picking){
-				CollisionTable();
+            ROS_INFO("Value of activate_detection: %d",msg->activate_detection);
+            if(msg->start_picking){
+                CollisionTable();
 				ros::topic::waitForMessage<moveit_msgs::PlanningScene>("/move_group/monitored_planning_scene", ros::Duration(5.0));
 				bool success = planning_scene_interface.applyCollisionObjects(collision_objects);
 				if(success) ROS_INFO("Successfully added collision objects");
 				else ROS_WARN("Failed to add the collision objects");
 				return;
+            }
+			if(msg->activate_detection)
+			{
+                ROS_INFO("See this message if activate_detection is true");
+				activated = true;
+				return;
 			}
-            return;
+            else{
+                ROS_INFO("See this message if activate_detection is false");
+                activated = false;
+                return;
+            }
 		}
 
 
 	private:
 
-        ros::NodeHandle &nh_;
-         image_transport::ImageTransport it;
+        ros::NodeHandle nh_;
         tf2_ros::Buffer tf_buffer;
-        tf2_ros::TransformListener tf_listener;
-		// Service server
-		ros::ServiceServer service_;
 		// vector for storing the detected objects frames
 		ros::Subscriber object_detection_sub; // subscriber for apriltag detection
 		image_transport::Subscriber image_sub; // subscriber for camera
@@ -116,6 +117,7 @@ class NodeB
 
             // callBack always running, saving detected poses only when required
             if (activated) {
+                ROS_INFO("Apriltag detection callback called");
                 id = msg->detections[0].id[0];
                 for(const auto& object : collision_objects){
                     if(stoi(object.id)==id){
@@ -248,15 +250,9 @@ class NodeB
 int main(int argc, char **argv) {
     // Initialize the ROS node
     ros::init(argc, argv, "Node_B");
-    ros::Rate rate(20);
-    ros::NodeHandle nh;
     // Create an instance of the server class
-    NodeB node_b_server(nh);
-
-    while (ros::ok()) {
-        ros::spinOnce(); // Process callbacks
-        rate.sleep();
-    }
+    NodeB node_b_server;
+    ros::spin();
 
     return 0;
 }
