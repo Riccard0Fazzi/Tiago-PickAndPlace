@@ -22,10 +22,9 @@
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
 // import for action client node_B
 #include <actionlib/client/simple_action_client.h> 
-#include <ir2425_group_24_a2/manipulation.h>
+#include <ir2425_group_24_a2/manipulationAction.h>
 
-
-typedef actionlib::SimpleActionClient<ir2425_group_24_a2::manipulation> PickingClient;
+typedef actionlib::SimpleActionClient<ir2425_group_24_a2::manipulationAction> PickingClient;
 
 class NodeB
 {
@@ -91,7 +90,7 @@ class NodeB
         std::vector<moveit_msgs::CollisionObject> collision_objects;
 		ros::Publisher picking_pub;
 		ros::Subscriber activate_detection_sub;
-        PickingClient picking_client_;
+        actionlib::SimpleActionClient<ir2425_group_24_a2::manipulationAction> picking_client_;
 
 
 				
@@ -264,7 +263,7 @@ class NodeB
                 int id = stoi(object.id);
                 if(id >= 4 && id < 7){
                     // send the goal of the collision object
-                    PickingClient goal;
+                    ir2425_group_24_a2::manipulationGoal goal;
                     goal.ID = id;
                     goal.pose = object.pose;
                     picking_client_.sendGoal(goal);

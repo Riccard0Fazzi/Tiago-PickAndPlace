@@ -8,23 +8,23 @@ project(ir2425_group_24_a2)
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
 ## is used, also find other catkin packages
 find_package(catkin REQUIRED COMPONENTS
-                roscpp
-                actionlib
-                actionlib_msgs
-                move_base_msgs
-                tiago_iaslab_simulation
+            roscpp
+            actionlib
+            actionlib_msgs
+            move_base_msgs
+            tiago_iaslab_simulation
 				std_msgs
 				message_generation
 				geometry_msgs
 				apriltag_ros
 				trajectory_msgs
-                moveit_msgs
-                moveit_ros_planning_interface
-                apriltag_ros
-                tf2
-                tf2_ros
-                tf2_geometry_msgs
-                control_msgs
+            moveit_msgs
+            moveit_ros_planning_interface
+            apriltag_ros
+            tf2
+            tf2_ros
+            tf2_geometry_msgs
+            control_msgs
 )
 
 find_package(OpenCV REQUIRED)
@@ -77,8 +77,8 @@ add_message_files(
 
 ## Generate actions in the 'action' folder
 add_action_files(
-   FILES
-   manipulation.action
+   DIRECTORY action
+   FILES manipulation.action
 #   Action2.action
 )
 
@@ -87,6 +87,7 @@ generate_messages(
    DEPENDENCIES
    std_msgs  # Or other packages containing msgs
    actionlib_msgs
+   geometry_msgs
 )
 
 ################################################

@@ -1,6 +1,6 @@
 #goal definition
 int32 ID
-geometry_msgs::Pose pickable_object
+geometry_msgs/Pose pose
 ---
 #result definition
 bool succeeded
