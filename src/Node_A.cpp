@@ -83,7 +83,7 @@ public:
 		routineA.push_back(goal);
 
         // PICKING POSE
-        goal.target_pose.pose.position.x = 7.93904; // x-coordinate
+        goal.target_pose.pose.position.x = 7.83904; // x-coordinate
         goal.target_pose.pose.position.y = -3.81049; // y-coordinate
         goal.target_pose.pose.orientation.z = 0.7372; // sin(π/4)
         goal.target_pose.pose.orientation.w = 0.6755; // cos(π/4)
@@ -143,17 +143,17 @@ public:
 		routineB.push_back(goal);
 
 
-   }
+    }
 
     void Detection() {
         ir2425_group_24_a2::detection msg;
 
         // Define pan and tilt points
         std::vector<std::pair<double, double>> positions = {
-            {0.0, -M_PI / 3.0},        // Look down 60 degrees
-            {-M_PI / 7.2, 0.0},        // Look left 25 degrees (maintaining down as 1)
-            {M_PI / 3.6, 0.0},         // Look right 50 degrees (from the previous position, maintaining down as 1)
-            {-M_PI / 7.2, 0.0}         // Look left 25 degrees (returning to initial position, maintaining down as 1)
+            {0.0, -M_PI / 4.0},        // Look down 50 degrees
+            {+M_PI / 7.2, -M_PI / 4.0},        // Look left 25 degrees (maintaining down as 1)
+            {-M_PI / 7.2, -M_PI / 4.0},         // Look right 50 degrees (from the previous position, maintaining down as 1)
+            {0.0, -M_PI / 4.0}   
         };
 
         // Iterate through the positions
@@ -187,7 +187,8 @@ public:
 
             // Send the goal
             head_client.sendGoal(goal);
-
+            goal = control_msgs::FollowJointTrajectoryGoal(); // Reset to default
+            
             // Monitor the result while allowing callbacks to process
             while (!head_client.waitForResult(ros::Duration(0.1))) {
                 ros::spinOnce();  // Process other callbacks (e.g., Object Detection)

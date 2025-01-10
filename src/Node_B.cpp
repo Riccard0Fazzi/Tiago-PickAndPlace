@@ -21,12 +21,13 @@
 #include <tf2_ros/transform_listener.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
 
+typedef actionlib::SimpleActionClient<ir2425_group_24_a2::manipulation> PickingClient;
 
 class NodeB
 {
 	public:
 
-		NodeB()
+		NodeB():picking_client_("/picking", true) // action client to the move_base action server
         {
 			// Initialize the service server
 			ROS_INFO("Node_B server is up and ready to receive requests.");
@@ -36,6 +37,10 @@ class NodeB
             // Subscriber to the AprilTag detection topic (messages rate: 20 Hz)
             object_detection_sub = nh_.subscribe("/tag_detections", 10, &NodeB::ObjectDetectionCallback, this);
             // publisher for the initial tilt of the camera 
+             // Wait for the NodeC action server to start
+            ROS_INFO("Waiting for the /picking action server to start...");
+            picking_client_.waitForServer();
+            ROS_INFO("/picking action server started.");
             activated = false;
 			picking_pub = nh_.advertise<ir2425_group_24_a2::picking_completed>("/picking_terminated", 10);
             activate_detection_sub = nh_.subscribe("/start_detection", 10, &NodeB::ActivateDetectionCallBack, this);
@@ -51,6 +56,7 @@ class NodeB
 				bool success = planning_scene_interface.applyCollisionObjects(collision_objects);
 				if(success) ROS_INFO("Successfully added collision objects");
 				else ROS_WARN("Failed to add the collision objects");
+                initialize_picking();
 				return;
             }
 			if(msg->activate_detection)
@@ -81,6 +87,8 @@ class NodeB
         std::vector<moveit_msgs::CollisionObject> collision_objects;
 		ros::Publisher picking_pub;
 		ros::Subscriber activate_detection_sub;
+        PickingClient picking_client_;
+
 
 				
 		// CallBack to display Tiago's view
@@ -169,7 +177,7 @@ class NodeB
                         primitive.type = shape_msgs::SolidPrimitive::CYLINDER;
                         primitive.dimensions.resize(2);
                         primitive.dimensions[0] = 0.22;  // Increased height
-                        primitive.dimensions[1] = 0.055; // Increased radius
+                        primitive.dimensions[1] = 0.035; // Increased radius
                         frame_in_map.pose.position.z = 0.90+0.11;  // Updated z-correction
                     } else if (id <= 6) { // Cube
                         primitive.type = shape_msgs::SolidPrimitive::BOX;
@@ -181,8 +189,8 @@ class NodeB
                     } else { // Triangular prism
                         primitive.type = shape_msgs::SolidPrimitive::BOX;
                         primitive.dimensions.resize(3);
-                        primitive.dimensions[0] = 0.077;  // Increased X size (Length)
-                        primitive.dimensions[1] = 0.055;  // Increased Y size (Base)
+                        primitive.dimensions[0] = 0.055;  // Increased X size (Length)
+                        primitive.dimensions[1] = 0.077;  // Increased Y size (Base)
                         primitive.dimensions[2] = 0.0385; // Increased Z size (Height)
                         frame_in_map.pose.position.z = 0.90+0.01925;  // Updated z-correction
                     }
@@ -220,8 +228,8 @@ class NodeB
 
             // Define the pose
             geometry_msgs::Pose pickup_table_pose;
-            pickup_table_pose.position.x = 7.83904; // Adjust based on the workspace
-            pickup_table_pose.position.y = -3.01049; // Adjust based on the workspace
+            pickup_table_pose.position.x = 7.88904; // Adjust based on the workspace
+            pickup_table_pose.position.y = −2.99049; // Adjust based on the workspace
             pickup_table_pose.position.z = 0.45; // Half the height of the table for the center point
 
             // Assign primitive and pose to the collision object
@@ -244,7 +252,28 @@ class NodeB
             }
         }
 
-
+        void initialize_picking()
+        {
+            // choose pickable object
+            for(const auto& object : collision_objects)
+            {
+                if(stoi(object.id) >= 4 && stoi(object.id) < 7){
+                    // send the goal of the collision object
+                    picking_client_.sendGoal(object);
+                     // Monitor the result while allowing callbacks to process
+                    while (!picking_client_.waitForResult(ros::Duration(0.1))) {
+                        ros::spinOnce();  // Process other callbacks (e.g., Object Detection)
+                    }
+                    // Check if the goal was successfully executed
+                    if (picking_client_.getState() != actionlib::SimpleClientGoalState::SUCCEEDED) 
+                        ROS_WARN("Picking action failed");
+                    else ROS_INFO("Picking action completed");
+                    break;
+                }
+            }
+            collision_object.clear();
+            
+        }
 
 };
 

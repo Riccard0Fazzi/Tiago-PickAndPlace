@@ -1,0 +1,8 @@
+#goal definition
+moveit_msgs::CollisionObject pickable_object
+---
+#result definition
+bool succeeded
+---
+#feedback
+int32[] sequence
