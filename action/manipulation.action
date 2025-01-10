@@ -1,5 +1,6 @@
 #goal definition
-moveit_msgs::CollisionObject pickable_object
+int32 ID
+geometry_msgs::Pose pickable_object
 ---
 #result definition
 bool succeeded

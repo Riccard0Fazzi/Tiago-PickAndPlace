@@ -20,6 +20,10 @@
 // import for TF
 #include <tf2_ros/transform_listener.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
+// import for action client node_B
+#include <actionlib/client/simple_action_client.h> 
+#include <ir2425_group_24_a2/manipulation.h>
+
 
 typedef actionlib::SimpleActionClient<ir2425_group_24_a2::manipulation> PickingClient;
 
@@ -229,7 +233,7 @@ class NodeB
             // Define the pose
             geometry_msgs::Pose pickup_table_pose;
             pickup_table_pose.position.x = 7.88904; // Adjust based on the workspace
-            pickup_table_pose.position.y = −2.99049; // Adjust based on the workspace
+            pickup_table_pose.position.y = -2.99049; // Adjust based on the workspace
             pickup_table_pose.position.z = 0.45; // Half the height of the table for the center point
 
             // Assign primitive and pose to the collision object
@@ -257,9 +261,13 @@ class NodeB
             // choose pickable object
             for(const auto& object : collision_objects)
             {
-                if(stoi(object.id) >= 4 && stoi(object.id) < 7){
+                int id = stoi(object.id);
+                if(id >= 4 && id < 7){
                     // send the goal of the collision object
-                    picking_client_.sendGoal(object);
+                    PickingClient goal;
+                    goal.ID = id;
+                    goal.pose = object.pose;
+                    picking_client_.sendGoal(goal);
                      // Monitor the result while allowing callbacks to process
                     while (!picking_client_.waitForResult(ros::Duration(0.1))) {
                         ros::spinOnce();  // Process other callbacks (e.g., Object Detection)
@@ -271,8 +279,13 @@ class NodeB
                     break;
                 }
             }
-            collision_object.clear();
-            
+            // clear scene to not move it with the robot
+            collision_objects.clear();
+            // publish the message to NodeA to declare picking termination
+            ir2425_group_24_a2::picking_completed msg; 
+            msg.picking_completed = true;
+            picking_pub.publish(msg);
+            ros::spinOnce();  
         }
 
 };

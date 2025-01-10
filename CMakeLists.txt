@@ -63,7 +63,7 @@ find_package(OpenCV REQUIRED)
 ##   * add every package in MSG_DEP_SET to generate_messages(DEPENDENCIES ...)
 
 ## Generate messages in the 'msg' folder
- add_message_files(
+add_message_files(
    FILES
    detection.msg
    picking_completed.msg
@@ -76,11 +76,11 @@ find_package(OpenCV REQUIRED)
  # )
 
 ## Generate actions in the 'action' folder
-# add_action_files(
-#   FILES
-#   Action1.action
+add_action_files(
+   FILES
+   manipulation.action
 #   Action2.action
-# )
+)
 
 ## Generate added messages and services with any dependencies listed here
 generate_messages(
