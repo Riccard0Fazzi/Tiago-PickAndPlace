@@ -145,7 +145,7 @@ public:
 
     }
 
-    void Detection() {
+    void moveHead() {
         ir2425_group_24_a2::detection msg;
 
         // Define pan and tilt points
@@ -167,7 +167,7 @@ public:
                 ROS_INFO("Published msg at %.2f", now.toSec());
                 detection_pub.publish(msg);
                 ros::spinOnce();
-                ros::Duration(2.0).sleep();
+                ros::Duration(1.0).sleep();
                 msg.activate_detection = false;
                 detection_pub.publish(msg);
                 ros::spinOnce();
@@ -334,7 +334,7 @@ int main(int argc, char** argv)
 
     nodeA.liftTorso();
 
-	nodeA.Detection();
+	nodeA.moveHead();
     // send goal to Node_B to detect a pickable object and pick it
     // send goal to Node_C to pick that object and 
     // manipulate it for transportation

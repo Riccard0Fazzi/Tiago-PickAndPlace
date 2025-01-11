@@ -24,6 +24,7 @@
 #include <actionlib/client/simple_action_client.h> 
 #include <ir2425_group_24_a2/manipulationAction.h>
 
+
 typedef actionlib::SimpleActionClient<ir2425_group_24_a2::manipulationAction> PickingClient;
 
 class NodeB
@@ -34,42 +35,44 @@ class NodeB
         {
 			// Initialize the service server
 			ROS_INFO("Node_B server is up and ready to receive requests.");
-            image_transport::ImageTransport it(nh_);
 			// Subscriber of image_transport type for Tiago Camera-Visual topic (essages rate: 30 Hz)
+            image_transport::ImageTransport it(nh_);
             image_sub = it.subscribe("/xtion/rgb/image_color", 100, &NodeB::tiagoEyesCallback, this);
             // Subscriber to the AprilTag detection topic (messages rate: 20 Hz)
             object_detection_sub = nh_.subscribe("/tag_detections", 10, &NodeB::ObjectDetectionCallback, this);
-            // publisher for the initial tilt of the camera 
-             // Wait for the NodeC action server to start
+            // Wait for the NodeC picking action server to start
             ROS_INFO("Waiting for the /picking action server to start...");
             picking_client_.waitForServer();
             ROS_INFO("/picking action server started.");
             activated = false;
+            // publisher to send the termination of the whole picking action
 			picking_pub = nh_.advertise<ir2425_group_24_a2::picking_completed>("/picking_terminated", 10);
+            // subscriber to the callback to receive when to detect objects
             activate_detection_sub = nh_.subscribe("/start_detection", 10, &NodeB::ActivateDetectionCallBack, this);
 		}
 
 
-		// Callback for message from NodeA
+		// Callback for communication with Node_A
 		void ActivateDetectionCallBack(const ir2425_group_24_a2::detection::ConstPtr& msg) {
-            ROS_INFO("Value of activate_detection: %d",msg->activate_detection);
+            // msg to stop the detection and initialize the picking operation
             if(msg->start_picking){
-                CollisionTable();
+                CollisionTable(); // add the table as collision object
+                // apply all the collision objects
 				ros::topic::waitForMessage<moveit_msgs::PlanningScene>("/move_group/monitored_planning_scene", ros::Duration(5.0));
 				bool success = planning_scene_interface.applyCollisionObjects(collision_objects);
-				if(success) ROS_INFO("Successfully added collision objects");
+				if(success) ROS_INFO("Successfully added all collision objects");
 				else ROS_WARN("Failed to add the collision objects");
                 initialize_picking();
 				return;
             }
+            // msg to start detection
 			if(msg->activate_detection)
 			{
-                ROS_INFO("See this message if activate_detection is true");
 				activated = true;
 				return;
 			}
+            // msg to stop detection 
             else{
-                ROS_INFO("See this message if activate_detection is false");
                 activated = false;
                 return;
             }
@@ -79,18 +82,15 @@ class NodeB
 	private:
 
         ros::NodeHandle nh_;
-        tf2_ros::Buffer tf_buffer;
-		// vector for storing the detected objects frames
+        tf2_ros::Buffer tf_buffer; 
 		ros::Subscriber object_detection_sub; // subscriber for apriltag detection
-		image_transport::Subscriber image_sub; // subscriber for camera
-		bool activated; // variable to trigger the detection of the objects
-        // Initialize MoveIt Planning Scene Interface
-        moveit::planning_interface::PlanningSceneInterface planning_scene_interface;
-        int id;
-        std::vector<moveit_msgs::CollisionObject> collision_objects;
-		ros::Publisher picking_pub;
-		ros::Subscriber activate_detection_sub;
-        actionlib::SimpleActionClient<ir2425_group_24_a2::manipulationAction> picking_client_;
+		image_transport::Subscriber image_sub; // subscriber for camera display
+		bool activated; // variable to trigger the detection of the objects or not
+        moveit::planning_interface::PlanningSceneInterface planning_scene_interface; // planning scene for the collision objects  
+        std::vector<moveit_msgs::CollisionObject> collision_objects; // vector containing all collision objects detected
+		ros::Publisher picking_pub; // publisher for sending the termination msg
+		ros::Subscriber activate_detection_sub; // subscriber to receive the start msg
+        PickingClient picking_client_; // action client for the picking action
 
 
 				
@@ -128,88 +128,82 @@ class NodeB
 
             // callBack always running, saving detected poses only when required
             if (activated) {
+                int id;
                 for(const auto& detection : msg->detections){
                     id = detection.id[0];
+                    // verify that it wasn't already detected
                     for(const auto& object : collision_objects){
                         if(stoi(object.id)==id){
                             return;
                         }
                     }
+                    // get the pose of the object
                     geometry_msgs::PoseStamped frame;
                     frame.header.seq = static_cast<uint32_t>(id); // saving ID
                     frame.header.frame_id = detection.pose.header.frame_id; // Get frame_id from the detection
                     ROS_INFO("Detected object ID: %u",frame.header.seq);
                     frame.pose.position = detection.pose.pose.pose.position; // saving position
                     frame.pose.orientation = detection.pose.pose.pose.orientation;// saving orientation	
-                    // Add as collision object
-                    moveit_msgs::CollisionObject collision_object;
-                    collision_object.header.frame_id = "map";  // Use map frame
-                    collision_object.id = std::to_string(id);
-
-                    // from camera frame to map frame 
                     // Define a transform from the camera frame (or detected frame) to the map frame
                     geometry_msgs::PoseStamped frame_in_map;
-
                     tf2_ros::TransformListener tf_listener(tf_buffer);
-
                     ros::Rate rate(100.0);  // Loop frequency in Hz
+                    // transform from camera frame to map frame
                     while (ros::ok()) {
-                        ROS_INFO("Waiting transform from map to %s",frame.header.frame_id.c_str());
                         if(tf_buffer.canTransform("map", frame.header.frame_id, ros::Time::now(), ros::Duration(1.0))) {
                             try {
                                 tf_buffer.transform(frame, frame_in_map, "map", ros::Duration(0.1));
-                                ROS_INFO("Successfully transformed frame from %s to map frame", frame.header.frame_id.c_str());
                                 break;  // Exit loop after successful transformation
                             } catch (tf2::TransformException &ex) {
                                 ROS_WARN("Could not transform pose from %s to map frame: %s", frame.header.frame_id.c_str(), ex.what());
                             }
-                        } else {
-                            //ROS_WARN_THROTTLE(1.0, "Transform not available from %s to map frame. Retrying...", frame.header.frame_id.c_str());
-                        }
-                        //ros::Duration(0.1).sleep();  // Sleep for 0.1 seconds between checks
-                        rate.sleep();
-                        
+                        } 
+                        rate.sleep();  
                     }
+                    // Add the object as collision object
+                    moveit_msgs::CollisionObject collision_object;
+                    collision_object.header.frame_id = "map";  // Use map frame
+                    collision_object.id = std::to_string(id); 
+                    // fixed orientations on x and y because we 
+                    // assume that the objects are placed over 
+                    // the table (same reason for the z-correction
+                    // in position)
                     frame_in_map.pose.orientation.x = 0;
                     frame_in_map.pose.orientation.y = 0;
-
-
-                    // Define collision object shape (e.g., cylinder for hexagonal prism)
+                    // Define collision object shape 
                     shape_msgs::SolidPrimitive primitive;
                     if (id <= 3) {  // Hexagonal prism
                         primitive.type = shape_msgs::SolidPrimitive::CYLINDER;
                         primitive.dimensions.resize(2);
-                        primitive.dimensions[0] = 0.22;  // Increased height
-                        primitive.dimensions[1] = 0.035; // Increased radius
-                        frame_in_map.pose.position.z = 0.90+0.11;  // Updated z-correction
+                        primitive.dimensions[0] = 0.22;  // height
+                        primitive.dimensions[1] = 0.035; // radius
+                        frame_in_map.pose.position.z = 0.90+0.11; // z-correction
                     } else if (id <= 6) { // Cube
                         primitive.type = shape_msgs::SolidPrimitive::BOX;
                         primitive.dimensions.resize(3);
-                        primitive.dimensions[0] = 0.055; // Increased X size
-                        primitive.dimensions[1] = 0.055; // Increased Y size
-                        primitive.dimensions[2] = 0.055; // Increased Z size
-                        frame_in_map.pose.position.z = 0.90+0.0275;  // Updated z-correction
+                        primitive.dimensions[0] = 0.055; // (Length)
+                        primitive.dimensions[1] = 0.055; // (Base)
+                        primitive.dimensions[2] = 0.055; // (Height)
+                        frame_in_map.pose.position.z = 0.90+0.0275; // z-correction
                     } else { // Triangular prism
                         primitive.type = shape_msgs::SolidPrimitive::BOX;
                         primitive.dimensions.resize(3);
-                        primitive.dimensions[0] = 0.055;  // Increased X size (Length)
-                        primitive.dimensions[1] = 0.077;  // Increased Y size (Base)
-                        primitive.dimensions[2] = 0.0385; // Increased Z size (Height)
-                        frame_in_map.pose.position.z = 0.90+0.01925;  // Updated z-correction
+                        primitive.dimensions[0] = 0.055;  // (Length)
+                        primitive.dimensions[1] = 0.077;  // (Base)
+                        primitive.dimensions[2] = 0.0385; // (Height)
+                        frame_in_map.pose.position.z = 0.90+0.01925;  // z-correction
                     }
 
-
-                    // Assign pose
+                    // add to the collision objects
                     collision_object.primitives.push_back(primitive);
                     collision_object.primitive_poses.push_back(frame_in_map.pose);
                     collision_object.operation = moveit_msgs::CollisionObject::ADD;
-
-                    // Add to the planning scene
                     collision_objects.push_back(collision_object);
                 }
             }
 		}
 
+        // method to add the table as a collision object
         void CollisionTable() {
             std::vector<moveit_msgs::CollisionObject> collision_objects;
 
@@ -247,17 +241,17 @@ class NodeB
             // Apply the collision objects to the planning scene
             bool success = planning_scene_interface.applyCollisionObjects(collision_objects);
 
-            if(success){
-                    ROS_INFO("Successfully added Table collision object");
-                }
-            else{
+            if(!success){
                 ROS_WARN("Failed to add Table collision object");
             }
         }
 
+        // method to initialize the picking operation
+        // choose the object to pick and send the goal
+        // to Node_C to pick it!
         void initialize_picking()
         {
-            // choose pickable object
+            // choose pickable object among the objects detected
             for(const auto& object : collision_objects)
             {
                 int id = stoi(object.id);
@@ -266,8 +260,18 @@ class NodeB
                     ir2425_group_24_a2::manipulationGoal goal;
                     goal.ID = id;
                     goal.pose = object.pose;
+                    // adjust z-axis to be the top of the object
+                    if(id<=3){
+                        goal.pose.position.z += 0.11;
+                    }
+                    else if(id<=6){
+                        goal.pose.position.z += 0.0275;
+                    }
+                    else{
+                        goal.pose.position.z += 0.01925;
+                    }
                     picking_client_.sendGoal(goal);
-                     // Monitor the result while allowing callbacks to process
+                    // Monitor the result while allowing callbacks to process
                     while (!picking_client_.waitForResult(ros::Duration(0.1))) {
                         ros::spinOnce();  // Process other callbacks (e.g., Object Detection)
                     }
