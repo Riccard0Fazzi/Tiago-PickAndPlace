@@ -58,7 +58,7 @@ private:
         moveit::planning_interface::MoveGroupInterface move_group("arm");
         moveit::planning_interface::PlanningSceneInterface planning_scene;
         moveit::planning_interface::MoveGroupInterface::Plan plan;
-
+    /*  
         // Set initial configuration for Tiago's arm
         std::map<std::string, double> initial_joint_positions;
         // Base joint remains centered (no rotation).
@@ -77,6 +77,24 @@ private:
         initial_joint_positions["arm_7_joint"] = 0.192;
 
         move_group.setJointValueTarget(initial_joint_positions);
+        */
+        geometry_msgs::Pose inital_pose = pose;
+        inital_pose.position.x = 7.88904;
+        inital_pose.position.y = -3.1;
+        inital_pose.position.z = 1.0;
+        // Set the orientation for z-axis pointing downwards
+        tf2::Quaternion orientation_downwards;
+        orientation_downwards.setRPY(M_PI, 0, 0); // Roll = 180°, Pitch = 0°, Yaw = 0°
+        inital_pose.orientation.x = orientation_downwards.x();
+        inital_pose.orientation.y = orientation_downwards.y();
+        inital_pose.orientation.z = orientation_downwards.z();
+        inital_pose.orientation.w = orientation_downwards.w(); 
+        bool is_within_bounds = move_group.setPoseTarget(inital_pose);
+        if (!is_within_bounds) {
+            ROS_ERROR("Target pose is outside the robot's workspace.");
+            return false;
+        }
+        move_group.setPlanningTime(10.0); // Increase to 10 seconds or more
         ROS_INFO("Setting initial configuration for Tiago's arm...");
         bool success = (move_group.plan(plan) == moveit::planning_interface::MoveItErrorCode::SUCCESS);
         if (!success) {
@@ -94,18 +112,15 @@ private:
         geometry_msgs::Pose target_pose = pose;
         target_pose.position.z += 0.1;
         // Set the orientation for z-axis pointing downwards
-        tf2::Quaternion orientation_downwards;
-        orientation_downwards.setRPY(M_PI, 0, 0); // Roll = 180°, Pitch = 0°, Yaw = 0°
         target_pose.orientation.x = orientation_downwards.x();
         target_pose.orientation.y = orientation_downwards.y();
         target_pose.orientation.z = orientation_downwards.z();
         target_pose.orientation.w = orientation_downwards.w(); 
-        bool is_within_bounds = move_group.setPoseTarget(target_pose);
+        is_within_bounds = move_group.setPoseTarget(target_pose);
         if (!is_within_bounds) {
             ROS_ERROR("Target pose is outside the robot's workspace.");
             return false;
         }
-        move_group.setPlanningTime(10.0); // Increase to 10 seconds or more
         // Plan and execute the motion to the target pose
         ROS_INFO("Planning motion to target position above the marker...");
         success = (move_group.plan(plan) == moveit::planning_interface::MoveItErrorCode::SUCCESS);
