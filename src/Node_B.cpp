@@ -91,6 +91,7 @@ class NodeB
 		ros::Publisher picking_pub; // publisher for sending the termination msg
 		ros::Subscriber activate_detection_sub; // subscriber to receive the start msg
         PickingClient picking_client_; // action client for the picking action
+        double table_h;
 
 
 				
@@ -177,21 +178,21 @@ class NodeB
                         primitive.dimensions.resize(2);
                         primitive.dimensions[0] = 0.22;  // height
                         primitive.dimensions[1] = 0.035; // radius
-                        frame_in_map.pose.position.z = 0.90+0.11; // z-correction
+                        frame_in_map.pose.position.z = table_h + 0.11; // z-correction
                     } else if (id <= 6) { // Cube
                         primitive.type = shape_msgs::SolidPrimitive::BOX;
                         primitive.dimensions.resize(3);
                         primitive.dimensions[0] = 0.055; // (Length)
                         primitive.dimensions[1] = 0.055; // (Base)
                         primitive.dimensions[2] = 0.055; // (Height)
-                        frame_in_map.pose.position.z = 0.90+0.0275; // z-correction
+                        frame_in_map.pose.position.z = table_h + 0.0275; // z-correction
                     } else { // Triangular prism
                         primitive.type = shape_msgs::SolidPrimitive::BOX;
                         primitive.dimensions.resize(3);
                         primitive.dimensions[0] = 0.055;  // (Length)
                         primitive.dimensions[1] = 0.077;  // (Base)
                         primitive.dimensions[2] = 0.0385; // (Height)
-                        frame_in_map.pose.position.z = 0.90+0.01925;  // z-correction
+                        frame_in_map.pose.position.z = table_h + 0.01925;  // z-correction
                     }
 
                     // add to the collision objects
@@ -209,6 +210,7 @@ class NodeB
 
             // Table dimensions (slightly larger than real ones for safety)
             double table_size = 0.95; 
+            table_h = 0.75;
 
             // Pick-up table
             moveit_msgs::CollisionObject pickup_table;
@@ -221,13 +223,13 @@ class NodeB
             pickup_table_primitive.dimensions.resize(3);
             pickup_table_primitive.dimensions[0] = table_size; // Length
             pickup_table_primitive.dimensions[1] = table_size; // Width
-            pickup_table_primitive.dimensions[2] = 0.90; // Height
+            pickup_table_primitive.dimensions[2] = table_h; // Height
 
             // Define the pose
             geometry_msgs::Pose pickup_table_pose;
             pickup_table_pose.position.x = 7.88904; // Adjust based on the workspace
             pickup_table_pose.position.y = -2.99049; // Adjust based on the workspace
-            pickup_table_pose.position.z = 0.45; // Half the height of the table for the center point
+            pickup_table_pose.position.z = 0.375; // Half the height of the table for the center point
 
             // Assign primitive and pose to the collision object
             pickup_table.primitives.push_back(pickup_table_primitive);

@@ -2,6 +2,8 @@
 #include <actionlib/server/simple_action_server.h>
 #include <ir2425_group_24_a2/manipulationAction.h>
 #include <geometry_msgs/Pose.h>
+#include <tf2/LinearMath/Quaternion.h>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.h> // For tf2 conversions
 // import for MoveIt!
 #include <moveit/move_group_interface/move_group_interface.h>
 #include <moveit/planning_scene_interface/planning_scene_interface.h>
@@ -59,13 +61,20 @@ private:
 
         // Set initial configuration for Tiago's arm
         std::map<std::string, double> initial_joint_positions;
-        initial_joint_positions["arm_1_joint"] = 0.0;       // Base joint remains centered (no rotation)
-        initial_joint_positions["arm_2_joint"] = 0.0;       // Shoulder joint at neutral (higher than -0.5)
-        initial_joint_positions["arm_3_joint"] = 0.6;       // Elbow joint moderately extended
-        initial_joint_positions["arm_4_joint"] = 0.0;       // No rotation at the forearm
-        initial_joint_positions["arm_5_joint"] = -1.2;      // Wrist pitch to direct the end-effector downward
-        initial_joint_positions["arm_6_joint"] = 0.0;       // Neutral wrist yaw
-        initial_joint_positions["arm_7_joint"] = 0.0;       // Neutral end-effector roll
+        // Base joint remains centered (no rotation).
+        initial_joint_positions["arm_1_joint"] = 0.867;
+        // Shoulder joint slightly raised to align the arm above the table and provide a 90-degree angle between the forearm and shoulder.
+        initial_joint_positions["arm_2_joint"] = 0.781;
+        // Elbow joint ]
+        initial_joint_positions["arm_3_joint"] = -1.406;  
+        // Forearm remains aligned without rotation.
+        initial_joint_positions["arm_4_joint"] = 1.314;
+        // Wrist pitch adjusted to align the end-effector parallel to the table and point downward.
+        initial_joint_positions["arm_5_joint"] = 0.657;  // Approx. -90 degrees in radians.
+        // Wrist yaw set to neutral for simplicity.
+        initial_joint_positions["arm_6_joint"] = -1.394;
+        // End-effector roll neutral for alignment over the table.
+        initial_joint_positions["arm_7_joint"] = 0.192;
 
         move_group.setJointValueTarget(initial_joint_positions);
         ROS_INFO("Setting initial configuration for Tiago's arm...");
@@ -83,7 +92,14 @@ private:
 
         // Set the target pose above the marker (10 cm above)
         geometry_msgs::Pose target_pose = pose;
-        target_pose.position.z += 0.1; 
+        target_pose.position.z += 0.1;
+        // Set the orientation for z-axis pointing downwards
+        tf2::Quaternion orientation_downwards;
+        orientation_downwards.setRPY(M_PI, 0, 0); // Roll = 180°, Pitch = 0°, Yaw = 0°
+        target_pose.orientation.x = orientation_downwards.x();
+        target_pose.orientation.y = orientation_downwards.y();
+        target_pose.orientation.z = orientation_downwards.z();
+        target_pose.orientation.w = orientation_downwards.w(); 
         bool is_within_bounds = move_group.setPoseTarget(target_pose);
         if (!is_within_bounds) {
             ROS_ERROR("Target pose is outside the robot's workspace.");
