@@ -58,6 +58,12 @@ private:
         moveit::planning_interface::MoveGroupInterface move_group("arm");
         moveit::planning_interface::PlanningSceneInterface planning_scene;
         moveit::planning_interface::MoveGroupInterface::Plan plan;
+        // To print the reference frame for the planning
+        ROS_INFO("Planning frame: %s", move_group.getPlanningFrame().c_str());
+        // change workspace dimensions
+        //                     (min_x, min_y, min_z, max_x, max_y, max_z)
+        move_group.setWorkspace(-1.0, -3.0, 0.0, 2.0, 3.0, 3.0);
+
 
         // Set initial configuration for Tiago's arm
         std::map<std::string, double> initial_joint_positions;
@@ -93,7 +99,7 @@ private:
         target_pose.orientation.x = orientation_downwards.x();
         target_pose.orientation.y = orientation_downwards.y();
         target_pose.orientation.z = orientation_downwards.z();
-        target_pose.orientation.w = orientation_downwards.w(); 
+        target_pose.orientation.w = orientation_downwards.w();  
         bool is_within_bounds = move_group.setPoseTarget(target_pose);
         if (!is_within_bounds) {
             ROS_ERROR("Target pose is outside the robot's workspace.");

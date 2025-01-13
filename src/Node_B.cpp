@@ -272,6 +272,42 @@ class NodeB
                     else{
                         goal.pose.position.z += 0.01925;
                     }
+
+                    goal.pose.position.z += 0.1;
+                    // Set the orientation for z-axis pointing downwards
+                    tf2::Quaternion orientation_downwards;
+                    orientation_downwards.setRPY(M_PI, 0, 0); // Roll = 180°, Pitch = 0°, Yaw = 0°
+                    // Set the orientation for z-axis pointing downwards
+                    goal.pose.orientation.x = orientation_downwards.x();
+                    goal.pose.orientation.y = orientation_downwards.y();
+                    goal.pose.orientation.z = orientation_downwards.z();
+                    goal.pose.orientation.w = orientation_downwards.w();  
+                    
+                    // Transform the coordinate of the object from the map frame to the base_footprint base
+                    // which is the frame used from the moveIt planner
+                    geometry_msgs::PoseStamped frame_in_footprint;
+                    geometry_msgs::PoseStamped frame_in_map;
+                    // Initialize the pose in the "map" frame
+                    frame_in_map.pose = goal.pose;
+                    frame_in_map.header.frame_id = "map";           // Set the frame ID to "map"
+                    frame_in_map.header.stamp = ros::Time::now();  // Set the timestamp to current time
+
+                    tf2_ros::TransformListener tf_listener(tf_buffer);
+                    ros::Rate rate(100.0);  // Loop frequency in Hz
+                    // transform from camera frame to map frame
+                    while (ros::ok()) {
+                        if(tf_buffer.canTransform("base_footprint","map", ros::Time::now(), ros::Duration(1.0))) {
+                            try {
+                                tf_buffer.transform(frame_in_map, frame_in_footprint, "base_footprint", ros::Duration(0.1));
+                                break;  // Exit loop after successful transformation
+                            } catch (tf2::TransformException &ex) {
+                                ROS_WARN("Could not transform pose from 'map' to 'base_footprint' frame!: %s",ex.what());
+                            }
+                        } 
+                        rate.sleep();  
+                    }
+                    goal.pose = frame_in_footprint.pose;
+                   
                     picking_client_.sendGoal(goal);
                     // Monitor the result while allowing callbacks to process
                     while (!picking_client_.waitForResult(ros::Duration(0.1))) {
