@@ -49,6 +49,7 @@ class NodeB
 			picking_pub = nh_.advertise<ir2425_group_24_a2::picking_completed>("/picking_terminated", 10);
             // subscriber to the callback to receive when to detect objects
             activate_detection_sub = nh_.subscribe("/start_detection", 10, &NodeB::ActivateDetectionCallBack, this);
+            table_h = 0.75;
 		}
 
 
@@ -210,7 +211,6 @@ class NodeB
 
             // Table dimensions (slightly larger than real ones for safety)
             double table_size = 0.95; 
-            table_h = 0.75;
 
             // Pick-up table
             moveit_msgs::CollisionObject pickup_table;

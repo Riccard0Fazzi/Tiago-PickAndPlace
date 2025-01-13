@@ -61,20 +61,13 @@ private:
 
         // Set initial configuration for Tiago's arm
         std::map<std::string, double> initial_joint_positions;
-        // Base joint remains centered (no rotation).
-        initial_joint_positions["arm_1_joint"] = 0.070;
-        // Shoulder joint slightly raised to align the arm above the table and provide a 90-degree angle between the forearm and shoulder.
-        initial_joint_positions["arm_2_joint"] = 0.505;
-        // Elbow joint 
-        initial_joint_positions["arm_3_joint"] = -0.113;  
-        // Forearm remains aligned without rotation.
-        initial_joint_positions["arm_4_joint"] = 0.832;
-        // Wrist pitch adjusted to align the end-effector parallel to the table and point downward.
-        initial_joint_positions["arm_5_joint"] = -1.691;  // Approx. -90 degrees in radians.
-        // Wrist yaw set to neutral for simplicity.
-        initial_joint_positions["arm_6_joint"] = 1.230;
-        // End-effector roll neutral for alignment over the table.
-        initial_joint_positions["arm_7_joint"] = 0.0;
+        initial_joint_positions["arm_1_joint"] = 0.070;   // Base joint
+        initial_joint_positions["arm_2_joint"] = 0.505;   // Shoulder joint
+        initial_joint_positions["arm_3_joint"] = -0.113;  // Elbow joint
+        initial_joint_positions["arm_4_joint"] = 0.832;   // Forearm
+        initial_joint_positions["arm_5_joint"] = -1.691;  // Wrist pitch
+        initial_joint_positions["arm_6_joint"] = 1.230;   // Wrist yaw
+        initial_joint_positions["arm_7_joint"] = 0.0;     // End-effector roll
         move_group.setJointValueTarget(initial_joint_positions);  
         move_group.setPlanningTime(10.0); // Increase to 10 seconds or more
         ROS_INFO("Setting initial configuration for Tiago's arm...");
@@ -89,47 +82,19 @@ private:
             return false;
         }
         ROS_INFO("Initial configuration set successfully.");
-        geometry_msgs::Pose inital_pose = pose;
-        inital_pose.position.x = 7.88904;
-        inital_pose.position.y = -3.1;
-        inital_pose.position.z = 1.0;
-        // Set the orientation for z-axis pointing downwards
-        tf2::Quaternion orientation_downwards;
-        orientation_downwards.setRPY(M_PI, 0, 0); // Roll = 180°, Pitch = 0°, Yaw = 0°
-        inital_pose.orientation.x = orientation_downwards.x();
-        inital_pose.orientation.y = orientation_downwards.y();
-        inital_pose.orientation.z = orientation_downwards.z();
-        inital_pose.orientation.w = orientation_downwards.w(); 
-        bool is_within_bounds = move_group.setPoseTarget(inital_pose);
-        if (!is_within_bounds) {
-            ROS_ERROR("Target pose is outside the robot's workspace.");
-            return false;
-        }
-        move_group.setPlanningTime(10.0); // Increase to 10 seconds or more
-        ROS_INFO("Setting initial configuration for Tiago's arm...");
-        success = (move_group.plan(plan) == moveit::planning_interface::MoveItErrorCode::SUCCESS);
-        if (!success) {
-            ROS_ERROR("Failed to plan motion to initial configuration.");
-            return false;
-        }
-        success = (move_group.execute(plan) == moveit::planning_interface::MoveItErrorCode::SUCCESS);
-        if (!success) {
-            ROS_ERROR("Failed to execute motion to initial configuration.");
-            return false;
-        }
-        ROS_INFO("Initial configuration set successfully.");
-
-
 
         // Set the target pose above the marker (10 cm above)
         geometry_msgs::Pose target_pose = pose;
         target_pose.position.z += 0.1;
         // Set the orientation for z-axis pointing downwards
+        tf2::Quaternion orientation_downwards;
+        orientation_downwards.setRPY(M_PI, 0, 0); // Roll = 180°, Pitch = 0°, Yaw = 0°
+        // Set the orientation for z-axis pointing downwards
         target_pose.orientation.x = orientation_downwards.x();
         target_pose.orientation.y = orientation_downwards.y();
         target_pose.orientation.z = orientation_downwards.z();
         target_pose.orientation.w = orientation_downwards.w(); 
-        is_within_bounds = move_group.setPoseTarget(target_pose);
+        bool is_within_bounds = move_group.setPoseTarget(target_pose);
         if (!is_within_bounds) {
             ROS_ERROR("Target pose is outside the robot's workspace.");
             return false;
