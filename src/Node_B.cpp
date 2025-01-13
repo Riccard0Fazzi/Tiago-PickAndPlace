@@ -20,6 +20,8 @@
 // import for TF
 #include <tf2_ros/transform_listener.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
+#include <tf2_ros/transform_broadcaster.h> // For TF broadcasting
+#include <geometry_msgs/TransformStamped.h> // For TF message
 // import for action client node_B
 #include <actionlib/client/simple_action_client.h> 
 #include <ir2425_group_24_a2/manipulationAction.h>
@@ -93,6 +95,8 @@ class NodeB
 		ros::Subscriber activate_detection_sub; // subscriber to receive the start msg
         PickingClient picking_client_; // action client for the picking action
         double table_h;
+        tf2_ros::TransformBroadcaster tf_broadcaster_; // TF broadcaster
+
 
 
 				
@@ -163,9 +167,9 @@ class NodeB
                         rate.sleep();  
                     }
                     // Add the object as collision object
-                    moveit_msgs::CollisionObject collision_object;
-                    collision_object.header.frame_id = "map";  // Use map frame
-                    collision_object.id = std::to_string(id); 
+                    moveit_msgs::CollisionObject pickable_objs;
+                    pickable_objs.header.frame_id = "map";  // Use map frame
+                    pickable_objs.id = std::to_string(id); 
                     // fixed orientations on x and y because we 
                     // assume that the objects are placed over 
                     // the table (same reason for the z-correction
@@ -195,12 +199,14 @@ class NodeB
                         primitive.dimensions[2] = 0.0385; // (Height)
                         frame_in_map.pose.position.z = table_h + 0.01925;  // z-correction
                     }
+                    ROS_INFO("Object Pose in apriltag detection callback from map frame - Position: [x: %.2f, y: %.2f, z: %.2f]",frame_in_map.pose.position.x, frame_in_map.pose.position.y, frame_in_map.pose.position.z);
+
 
                     // add to the collision objects
-                    collision_object.primitives.push_back(primitive);
-                    collision_object.primitive_poses.push_back(frame_in_map.pose);
-                    collision_object.operation = moveit_msgs::CollisionObject::ADD;
-                    collision_objects.push_back(collision_object);
+                    pickable_objs.primitives.push_back(primitive);
+                    pickable_objs.primitive_poses.push_back(frame_in_map.pose);
+                    pickable_objs.operation = moveit_msgs::CollisionObject::ADD;
+                    collision_objects.push_back(pickable_objs);
                 }
             }
 		}
@@ -258,19 +264,22 @@ class NodeB
             {
                 int id = stoi(object.id);
                 if(id >= 4 && id < 7){
+                    
                     // send the goal of the collision object
                     ir2425_group_24_a2::manipulationGoal goal;
                     goal.ID = id;
                     goal.pose = object.pose;
+                    ROS_INFO("Object Pose from map frame - Position: [x: %.2f, y: %.2f, z: %.2f]",goal.pose.position.x, goal.pose.position.y, goal.pose.position.z);
+
                     // adjust z-axis to be the top of the object
                     if(id<=3){
-                        goal.pose.position.z += 0.11;
+                        goal.pose.position.z = goal.pose.position.z + 0.11;
                     }
                     else if(id<=6){
-                        goal.pose.position.z += 0.0275;
+                        goal.pose.position.z = goal.pose.position.z + 0.0275;
                     }
                     else{
-                        goal.pose.position.z += 0.01925;
+                        goal.pose.position.z = goal.pose.position.z + 0.01925;
                     }
 
                     goal.pose.position.z += 0.1;
@@ -282,6 +291,20 @@ class NodeB
                     goal.pose.orientation.y = orientation_downwards.y();
                     goal.pose.orientation.z = orientation_downwards.z();
                     goal.pose.orientation.w = orientation_downwards.w();  
+                    // PUBLISH THE FRAME HERE
+                    geometry_msgs::TransformStamped transform_stamped;
+                    transform_stamped.header.stamp = ros::Time::now();
+                    transform_stamped.header.frame_id = "map"; // Parent frame 
+                    transform_stamped.child_frame_id = "collision_object_in_map"; // Frame name for visualization
+
+                    // Set the translation and rotation from the pose of the collision object
+                    transform_stamped.transform.translation.x = goal.pose.position.x;
+                    transform_stamped.transform.translation.y = goal.pose.position.y;
+                    transform_stamped.transform.translation.z = goal.pose.position.z;
+                    transform_stamped.transform.rotation = goal.pose.orientation;
+
+                    // Publish the transformation
+                    tf_broadcaster_.sendTransform(transform_stamped);
                     
                     // Transform the coordinate of the object from the map frame to the base_footprint base
                     // which is the frame used from the moveIt planner

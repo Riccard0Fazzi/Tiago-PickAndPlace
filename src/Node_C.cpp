@@ -4,6 +4,8 @@
 #include <geometry_msgs/Pose.h>
 #include <tf2/LinearMath/Quaternion.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h> // For tf2 conversions
+#include <tf2_ros/transform_broadcaster.h> // For TF broadcasting
+#include <geometry_msgs/TransformStamped.h> // For TF message
 // import for MoveIt!
 #include <moveit/move_group_interface/move_group_interface.h>
 #include <moveit/planning_scene_interface/planning_scene_interface.h>
@@ -19,6 +21,7 @@ private:
     ir2425_group_24_a2::manipulationResult result_;
     moveit::planning_interface::MoveGroupInterface move_group_; // Interface for controlling the robot arm
     moveit::planning_interface::PlanningSceneInterface planning_scene_; // Interface for planning scene management
+    tf2_ros::TransformBroadcaster tf_broadcaster_; // TF broadcaster
 
 public:
     PickingActionServer(const std::string& name) :
@@ -53,6 +56,20 @@ private:
     // method to perform the picking operation
     bool performPicking(int32_t id, const geometry_msgs::Pose& pose) {
         ROS_INFO("Starting picking operation for ID=%d", id);
+        // PUBLISH THE FRAME HERE
+        geometry_msgs::TransformStamped transform_stamped;
+        transform_stamped.header.stamp = ros::Time::now();
+        transform_stamped.header.frame_id = "base_footprint"; // Parent frame 
+        transform_stamped.child_frame_id = "collision_object_pose"; // Frame name for visualization
+
+        // Set the translation and rotation from the pose of the collision object
+        transform_stamped.transform.translation.x = pose.position.x;
+        transform_stamped.transform.translation.y = pose.position.y;
+        transform_stamped.transform.translation.z = pose.position.z;
+        transform_stamped.transform.rotation = pose.orientation;
+
+        // Publish the transformation
+        tf_broadcaster_.sendTransform(transform_stamped);
 
         // Initialize MoveIt interfaces
         moveit::planning_interface::MoveGroupInterface move_group("arm");
