@@ -25,6 +25,8 @@
 #include <ir2425_group_24_a2/manipulationAction.h>
 
 
+
+
 typedef actionlib::SimpleActionClient<ir2425_group_24_a2::manipulationAction> PickingClient;
 
 class NodeB
@@ -49,7 +51,7 @@ class NodeB
 			picking_pub = nh_.advertise<ir2425_group_24_a2::picking_completed>("/picking_terminated", 10);
             // subscriber to the callback to receive when to detect objects
             activate_detection_sub = nh_.subscribe("/start_detection", 10, &NodeB::ActivateDetectionCallBack, this);
-            table_h = 0.75;
+            table_h = 0.78;
 		}
 
 
@@ -147,31 +149,31 @@ class NodeB
                     frame.pose.position = detection.pose.pose.pose.position; // saving position
                     frame.pose.orientation = detection.pose.pose.pose.orientation;// saving orientation	
                     // Define a transform from the camera frame (or detected frame) to the map frame
-                    geometry_msgs::PoseStamped frame_in_map;
+                    geometry_msgs::PoseStamped frame_in_bf;
                     tf2_ros::TransformListener tf_listener(tf_buffer);
                     ros::Rate rate(100.0);  // Loop frequency in Hz
                     // transform from camera frame to map frame
                     while (ros::ok()) {
-                        if(tf_buffer.canTransform("map", frame.header.frame_id, ros::Time::now(), ros::Duration(1.0))) {
+                        if(tf_buffer.canTransform("base_footprint", frame.header.frame_id, ros::Time::now(), ros::Duration(1.0))) {
                             try {
-                                tf_buffer.transform(frame, frame_in_map, "map", ros::Duration(0.1));
+                                tf_buffer.transform(frame, frame_in_bf, "base_footprint", ros::Duration(0.1));
                                 break;  // Exit loop after successful transformation
                             } catch (tf2::TransformException &ex) {
-                                ROS_WARN("Could not transform pose from %s to map frame: %s", frame.header.frame_id.c_str(), ex.what());
+                                ROS_WARN("Could not transform pose from %s to base_footprint frame: %s", frame.header.frame_id.c_str(), ex.what());
                             }
                         } 
                         rate.sleep();  
                     }
                     // Add the object as collision object
                     moveit_msgs::CollisionObject collision_object;
-                    collision_object.header.frame_id = "map";  // Use map frame
+                    collision_object.header.frame_id = "base_footprint";  // Use map frame
                     collision_object.id = std::to_string(id); 
                     // fixed orientations on x and y because we 
                     // assume that the objects are placed over 
                     // the table (same reason for the z-correction
                     // in position)
-                    frame_in_map.pose.orientation.x = 0;
-                    frame_in_map.pose.orientation.y = 0;
+                    //frame_in_bf.pose.orientation.x = 0;
+                    //frame_in_bf.pose.orientation.y = 0;
                     // Define collision object shape 
                     shape_msgs::SolidPrimitive primitive;
                     if (id <= 3) {  // Hexagonal prism
@@ -179,26 +181,26 @@ class NodeB
                         primitive.dimensions.resize(2);
                         primitive.dimensions[0] = 0.22;  // height
                         primitive.dimensions[1] = 0.035; // radius
-                        frame_in_map.pose.position.z = table_h + 0.11; // z-correction
+                        frame_in_bf.pose.position.z = table_h + 0.11; // z-correction
                     } else if (id <= 6) { // Cube
                         primitive.type = shape_msgs::SolidPrimitive::BOX;
                         primitive.dimensions.resize(3);
                         primitive.dimensions[0] = 0.055; // (Length)
                         primitive.dimensions[1] = 0.055; // (Base)
                         primitive.dimensions[2] = 0.055; // (Height)
-                        frame_in_map.pose.position.z = table_h + 0.0275; // z-correction
+                        frame_in_bf.pose.position.z = table_h + 0.0275; // z-correction
                     } else { // Triangular prism
                         primitive.type = shape_msgs::SolidPrimitive::BOX;
                         primitive.dimensions.resize(3);
                         primitive.dimensions[0] = 0.055;  // (Length)
                         primitive.dimensions[1] = 0.077;  // (Base)
                         primitive.dimensions[2] = 0.0385; // (Height)
-                        frame_in_map.pose.position.z = table_h + 0.01925;  // z-correction
+                        frame_in_bf.pose.position.z = table_h + 0.01925;  // z-correction
                     }
 
                     // add to the collision objects
                     collision_object.primitives.push_back(primitive);
-                    collision_object.primitive_poses.push_back(frame_in_map.pose);
+                    collision_object.primitive_poses.push_back(frame_in_bf.pose);
                     collision_object.operation = moveit_msgs::CollisionObject::ADD;
                     collision_objects.push_back(collision_object);
                 }
@@ -214,7 +216,7 @@ class NodeB
 
             // Pick-up table
             moveit_msgs::CollisionObject pickup_table;
-            pickup_table.header.frame_id = "map";  // Use map as the reference frame
+            pickup_table.header.frame_id = "base_footprint";  // Use map as the reference frame
             pickup_table.id = "pickup_table";
 
             // Define cube dimensions
@@ -227,8 +229,10 @@ class NodeB
 
             // Define the pose
             geometry_msgs::Pose pickup_table_pose;
-            pickup_table_pose.position.x = 7.88904; // Adjust based on the workspace
-            pickup_table_pose.position.y = -2.99049; // Adjust based on the workspace
+            //pickup_table_pose.position.x = 7.88904; // Adjust based on the workspace
+            //pickup_table_pose.position.y = -2.99049; // Adjust based on the workspace
+            pickup_table_pose.position.x = 0.82; // Adjust based on the workspace
+            pickup_table_pose.position.y = 0.02; // Adjust based on the workspace
             pickup_table_pose.position.z = 0.375; // Half the height of the table for the center point
 
             // Assign primitive and pose to the collision object
@@ -246,6 +250,7 @@ class NodeB
             if(!success){
                 ROS_WARN("Failed to add Table collision object");
             }
+
         }
 
         // method to initialize the picking operation
@@ -261,7 +266,7 @@ class NodeB
                     // send the goal of the collision object
                     ir2425_group_24_a2::manipulationGoal goal;
                     goal.ID = id;
-                    goal.pose = object.pose;
+                    goal.pose = object.primitive_poses[0];
                     // adjust z-axis to be the top of the object
                     if(id<=3){
                         goal.pose.position.z += 0.11;
@@ -271,43 +276,7 @@ class NodeB
                     }
                     else{
                         goal.pose.position.z += 0.01925;
-                    }
-
-                    goal.pose.position.z += 0.1;
-                    // Set the orientation for z-axis pointing downwards
-                    tf2::Quaternion orientation_downwards;
-                    orientation_downwards.setRPY(M_PI, 0, 0); // Roll = 180°, Pitch = 0°, Yaw = 0°
-                    // Set the orientation for z-axis pointing downwards
-                    goal.pose.orientation.x = orientation_downwards.x();
-                    goal.pose.orientation.y = orientation_downwards.y();
-                    goal.pose.orientation.z = orientation_downwards.z();
-                    goal.pose.orientation.w = orientation_downwards.w();  
-                    
-                    // Transform the coordinate of the object from the map frame to the base_footprint base
-                    // which is the frame used from the moveIt planner
-                    geometry_msgs::PoseStamped frame_in_footprint;
-                    geometry_msgs::PoseStamped frame_in_map;
-                    // Initialize the pose in the "map" frame
-                    frame_in_map.pose = goal.pose;
-                    frame_in_map.header.frame_id = "map";           // Set the frame ID to "map"
-                    frame_in_map.header.stamp = ros::Time::now();  // Set the timestamp to current time
-
-                    tf2_ros::TransformListener tf_listener(tf_buffer);
-                    ros::Rate rate(100.0);  // Loop frequency in Hz
-                    // transform from camera frame to map frame
-                    while (ros::ok()) {
-                        if(tf_buffer.canTransform("base_footprint","map", ros::Time::now(), ros::Duration(1.0))) {
-                            try {
-                                tf_buffer.transform(frame_in_map, frame_in_footprint, "base_footprint", ros::Duration(0.1));
-                                break;  // Exit loop after successful transformation
-                            } catch (tf2::TransformException &ex) {
-                                ROS_WARN("Could not transform pose from 'map' to 'base_footprint' frame!: %s",ex.what());
-                            }
-                        } 
-                        rate.sleep();  
-                    }
-                    goal.pose = frame_in_footprint.pose;
-                   
+                    } 
                     picking_client_.sendGoal(goal);
                     // Monitor the result while allowing callbacks to process
                     while (!picking_client_.waitForResult(ros::Duration(0.1))) {
