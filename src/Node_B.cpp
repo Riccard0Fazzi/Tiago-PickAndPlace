@@ -24,6 +24,11 @@
 #include <actionlib/client/simple_action_client.h> 
 #include <ir2425_group_24_a2/manipulationAction.h>
 
+#include <tf2/LinearMath/Transform.h>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.h>
+#include <tf2_ros/transform_broadcaster.h>
+#include <geometry_msgs/TransformStamped.h> // For TF message
+
 
 
 
@@ -95,6 +100,9 @@ class NodeB
 		ros::Subscriber activate_detection_sub; // subscriber to receive the start msg
         PickingClient picking_client_; // action client for the picking action
         double table_h;
+        // send the goal of the collision object
+        ir2425_group_24_a2::manipulationGoal goal;
+        tf2_ros::TransformBroadcaster tf_broadcaster_;
 
 
 				
@@ -209,7 +217,6 @@ class NodeB
 
         // method to add the table as a collision object
         void CollisionTable() {
-            std::vector<moveit_msgs::CollisionObject> collision_objects;
 
             // Table dimensions (slightly larger than real ones for safety)
             double table_size = 0.95; 
@@ -242,15 +249,6 @@ class NodeB
 
             collision_objects.push_back(pickup_table);
 
-            ros::topic::waitForMessage<moveit_msgs::PlanningScene>("/move_group/monitored_planning_scene", ros::Duration(5.0));
-
-            // Apply the collision objects to the planning scene
-            bool success = planning_scene_interface.applyCollisionObjects(collision_objects);
-
-            if(!success){
-                ROS_WARN("Failed to add Table collision object");
-            }
-
         }
 
         // method to initialize the picking operation
@@ -264,7 +262,6 @@ class NodeB
                 int id = stoi(object.id);
                 if(id >= 4 && id < 7){
                     // send the goal of the collision object
-                    ir2425_group_24_a2::manipulationGoal goal;
                     goal.ID = id;
                     goal.pose = object.primitive_poses[0];
                     // adjust z-axis to be the top of the object
@@ -278,6 +275,7 @@ class NodeB
                         goal.pose.position.z += 0.01925;
                     } 
                     picking_client_.sendGoal(goal);
+
                     // Monitor the result while allowing callbacks to process
                     while (!picking_client_.waitForResult(ros::Duration(0.1))) {
                         ros::spinOnce();  // Process other callbacks (e.g., Object Detection)

@@ -37,10 +37,9 @@ public:
     // CALLBACK that receives the goal when sent
     void executeCB(const ir2425_group_24_a2::manipulationGoalConstPtr& goal) {
         ROS_INFO("Received goal: ID=%d", goal->ID);
-        geometry_msgs::Pose target_pose = goal->pose;
 
         // Perform picking operation
-        bool success = performPicking(goal->ID, target_pose);
+        bool success = performPicking(goal->ID, goal->pose);
 
         if (success) {
             result_.succeeded = true;
@@ -56,23 +55,15 @@ public:
 private:
 
     // method to perform the picking operation
-    bool performPicking(int32_t id, const geometry_msgs::Pose& pose) {
+    bool performPicking(int32_t id, geometry_msgs::Pose pose) {
+
         ROS_INFO("Starting picking operation for ID=%d", id);
-
-        ROS_INFO("Object Pose - Position: [x: %.2f, y: %.2f, z: %.2f]", pose.position.x, pose.position.y, pose.position.z);
-        ROS_INFO("Object Pose - Orientation: [x: %.2f, y: %.2f, z: %.2f]", pose.orientation.x, pose.orientation.y, pose.orientation.z);
-
-
 
         // Initialize MoveIt interfaces
         moveit::planning_interface::MoveGroupInterface move_group("arm");
         // Change the end effector frame to perform the picking operation
         move_group.setEndEffectorLink("gripper_base_link");
         moveit::planning_interface::PlanningSceneInterface planning_scene;
-        ROS_INFO("MoveIt Planning Frame: %s", move_group.getPlanningFrame().c_str());
-        ROS_INFO("End effector frame used: %s",move_group.getEndEffectorLink().c_str());
-        
-
 
         moveit::planning_interface::MoveGroupInterface::Plan plan;
         // change workspace dimensions
@@ -112,59 +103,34 @@ private:
         ROS_INFO("Initial configuration set successfully.");
 
         // Set the target pose above the marker (10 cm above)
-        geometry_msgs::Pose target_pose = pose;
         // Set the orientation for z-axis pointing downwards
         tf2::Quaternion orientation_downwards;
-        target_pose.position.z += 0.2;
+        pose.position.z += 0.35;
         tf2::Quaternion current_orientation(
-            target_pose.orientation.x,
-            target_pose.orientation.y,
-            target_pose.orientation.z,
-            target_pose.orientation.w);
-
-        ROS_INFO("Picking Pose Before rotation - Orientation: [x: %.2f, y: %.2f, z: %.2f]",target_pose.orientation.x, target_pose.orientation.y, target_pose.orientation.z);
-
+            pose.orientation.x,
+            pose.orientation.y,
+            pose.orientation.z,
+            pose.orientation.w);
 
         // Step 3: Define the rotation about the x-axis (180°)
         tf2::Quaternion rotation_about_x;
         rotation_about_x.setRPY(M_PI, 0, 0); // Roll = 180°, Pitch = 0°, Yaw = 0°
 
         // Step 4: Combine the current orientation with the rotation
-        tf2::Quaternion combined_orientation = rotation_about_x * current_orientation;
+        tf2::Quaternion combined_orientation = current_orientation * rotation_about_x;
         combined_orientation.normalize(); // Ensure the quaternion is normalized
 
         // Step 5: Assign the combined orientation back to the target pose
-        target_pose.orientation.x = combined_orientation.x();
-        target_pose.orientation.y = combined_orientation.y();
-        target_pose.orientation.z = combined_orientation.z();
-        target_pose.orientation.w = combined_orientation.w(); 
-     
-
-        ROS_INFO("Picking Pose after rotation - Orientation: [x: %.2f, y: %.2f, z: %.2f]",target_pose.orientation.x, target_pose.orientation.y, target_pose.orientation.z);
-
-        bool is_within_bounds = move_group.setPoseTarget(target_pose);
+        pose.orientation.x = combined_orientation.x();
+        pose.orientation.y = combined_orientation.y();
+        pose.orientation.z = combined_orientation.z();
+        pose.orientation.w = combined_orientation.w(); 
+        
+        bool is_within_bounds = move_group.setPoseTarget(pose);
         if (!is_within_bounds) {
             ROS_ERROR("Target pose is outside the robot's workspace.");
             return false;
         }
-        /*ros::Rate(10);
-        while(ros::ok)
-        {
-               // PUBLISH THE FRAME HERE
-        geometry_msgs::TransformStamped transform_stamped;
-        transform_stamped.header.stamp = ros::Time::now();
-        transform_stamped.header.frame_id = "base_footprint"; // Parent frame 
-        transform_stamped.child_frame_id = "collision_object_pose"; // Frame name for visualization
-
-        // Set the translation and rotation from the pose of the collision object
-        transform_stamped.transform.translation.x = target_pose.position.x;
-        transform_stamped.transform.translation.y = target_pose.position.y;
-        transform_stamped.transform.translation.z = target_pose.position.z;
-        transform_stamped.transform.rotation = target_pose.orientation;
-
-        // Publish the transformation
-        tf_broadcaster_.sendTransform(transform_stamped);
-        }*/
 
         // Plan and execute the motion to the target pose
         ROS_INFO("Planning motion to target position above the marker...");
