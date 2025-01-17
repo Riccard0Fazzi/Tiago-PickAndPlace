@@ -22,6 +22,8 @@ find_package(catkin REQUIRED COMPONENTS
                 tf2_ros
                 tf2_geometry_msgs
                 control_msgs
+                gazebo_ros_link_attacher
+                gazebo_ros
 )
 
 find_package(OpenCV REQUIRED)
@@ -71,6 +73,8 @@ catkin_package(
     control_msgs
     actionlib
     actionlib_msgs
+    gazebo_ros_link_attacher
+    gazebo_ros
 
 
 #  DEPENDS system_lib
