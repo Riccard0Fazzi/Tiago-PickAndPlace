@@ -44,7 +44,7 @@ class NodeB
 			ROS_INFO("Node_B server is up and ready to receive requests.");
 			// Subscriber of image_transport type for Tiago Camera-Visual topic (essages rate: 30 Hz)
             image_transport::ImageTransport it(nh_);
-            image_sub = it.subscribe("/xtion/rgb/image_color", 100, &NodeB::tiagoEyesCallback, this);
+            image_sub = it.subscribe("/xtion/rgb/image_color", 10, &NodeB::tiagoEyesCallback, this);
             // Subscriber to the AprilTag detection topic (messages rate: 20 Hz)
             object_detection_sub = nh_.subscribe("/tag_detections", 10, &NodeB::ObjectDetectionCallback, this);
             // Wait for the NodeC picking action server to start
@@ -287,8 +287,18 @@ class NodeB
                     break;
                 }
             }
+            
+            std::vector<std::string> names = planning_scene_interface.getKnownObjectNames();
+            planning_scene_interface.removeCollisionObjects(names);
             // clear scene to not move it with the robot
             collision_objects.clear();
+            
+            // Check if the planning scene is now clear
+            if (planning_scene_interface.getKnownObjectNames().empty()) {
+                ROS_INFO("Successfully cleared the planning scene.");
+            } else {
+                ROS_WARN("Some collision objects could not be removed.");
+            }
             // publish the message to NodeA to declare picking termination
             ir2425_group_24_a2::picking_completed msg; 
             msg.picking_completed = true;

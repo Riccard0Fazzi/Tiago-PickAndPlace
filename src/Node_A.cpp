@@ -8,6 +8,16 @@
 #include <control_msgs/FollowJointTrajectoryAction.h>
 #include <trajectory_msgs/JointTrajectory.h>
 #include <trajectory_msgs/JointTrajectoryPoint.h>
+// import for ObjectDetectionCallback
+#include <apriltag_ros/AprilTagDetectionArray.h>
+#include <geometry_msgs/TransformStamped.h>
+#include <geometry_msgs/PoseStamped.h>
+// import for TF
+#include <tf2_ros/transform_listener.h>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.h>
+#include <tf2/LinearMath/Transform.h>
+#include <tf2_ros/transform_broadcaster.h>
+#include <geometry_msgs/TransformStamped.h> // For TF message
 
 // Alias for the move_base action client
 typedef actionlib::SimpleActionClient<move_base_msgs::MoveBaseAction> MoveBaseClient;
@@ -16,6 +26,9 @@ typedef actionlib::SimpleActionClient<control_msgs::FollowJointTrajectoryAction>
 class NodeA
 {
 public:
+
+    bool picked_object;
+    bool activated;
 
     // CONSTRUCTOR
     NodeA(ros::NodeHandle& nh)
@@ -43,6 +56,11 @@ public:
         ROS_INFO("Connected to torso controller action server.");
 		// set up the two routines 
 		initialize_routines(); 
+        picked_object = false;
+        activated = false;
+        // Subscriber to the AprilTag detection topic (messages rate: 20 Hz)
+        object_detection_sub = nh.subscribe("/tag_detections", 10, &NodeA::AprilTagDetectionCallback, this);
+            
     }
 
 	void PickingTerminatedCallBack(const ir2425_group_24_a2::picking_completed::ConstPtr& msg)
@@ -51,8 +69,63 @@ public:
 		{
 			ROS_INFO("Picking completed!");
 			ROS_INFO("Starting placing procedure");
+            picked_object = true;
 			return;
 		}
+	}
+
+    // CallBack for Object Detection
+    // ______________________________________________
+    // Callback that continuously search for AprilTags
+    // in Tiago's camera and compute their position
+    // wrt map frame (20 Hz)
+    void AprilTagDetectionCallback(const apriltag_ros::AprilTagDetectionArray::ConstPtr& msg) {
+            if(msg->detections.empty()){
+                return;
+            }
+
+            // callBack always running, saving detected poses only when required
+            if (activated) {
+                    int id = msg->detections[0].id[0];
+                    // get the pose of the object
+                    geometry_msgs::PoseStamped frame;
+                    frame.header.seq = static_cast<uint32_t>(id); // saving ID
+                    frame.header.frame_id = msg->detections[0].pose.header.frame_id; // Get frame_id from the detection
+                    ROS_INFO("Detected object ID: %u",frame.header.seq);
+                    frame.pose.position = msg->detections[0].pose.pose.pose.position; // saving position
+                    frame.pose.orientation = msg->detections[0].pose.pose.pose.orientation;// saving orientation	
+                    // Define a transform from the camera frame (or detected frame) to the map frame
+                    tf2_ros::TransformListener tf_listener(tf_buffer);
+                    ros::Rate rate(100.0);  // Loop frequency in Hz
+                    // transform from camera frame to map frame
+                    while (ros::ok()) {
+                        if(tf_buffer.canTransform("base_footprint", frame.header.frame_id, ros::Time::now(), ros::Duration(1.0))) {
+                            try {
+                                tf_buffer.transform(frame, frame_in_bf, "base_footprint", ros::Duration(0.1));
+                                break;  // Exit loop after successful transformation
+                            } catch (tf2::TransformException &ex) {
+                                ROS_WARN("Could not transform pose from %s to base_footprint frame: %s", frame.header.frame_id.c_str(), ex.what());
+                            }
+                        } 
+                        rate.sleep();    
+                    }
+                    activated = false;
+                    
+                    // PUBLISH THE FRAME HERE
+                    geometry_msgs::TransformStamped transform_stamped;
+                    transform_stamped.header.stamp = ros::Time::now();
+                    transform_stamped.header.frame_id = "base_footprint"; // Parent frame 
+                    transform_stamped.child_frame_id = "placing_tag_pose"; // Frame name for visualization
+
+                    // Set the translation and rotation from the pose of the collision object
+                    transform_stamped.transform.translation.x = frame_in_bf.pose.position.x;
+                    transform_stamped.transform.translation.y = frame_in_bf.pose.position.y;
+                    transform_stamped.transform.translation.z = frame_in_bf.pose.position.z;
+                    transform_stamped.transform.rotation = frame_in_bf.pose.orientation;
+
+                    // Publish the transformation
+                    tf_broadcaster_.sendTransform(transform_stamped);
+            }
 	}
 
 	void initialize_routines()
@@ -276,7 +349,33 @@ public:
 		else
 			ROS_WARN("The robot failed to reach the Picking Pose.");
     }
-   
+    
+    // PLACING POSE NAVIGATION method
+    // __________________________________________________
+    // method to navigate Tiago to the picking pose to be
+    // able to do the picking task
+    void navigateToPlacingPose()
+    {
+		for (size_t i = 0; i < 3; ++i) {
+
+            routineB[i].target_pose.header.stamp = ros::Time::now() + ros::Duration(0.1);
+			// Navigation to the Picking Pose
+			ROS_INFO("[Navigation] x = %f, y = %f", routineB[i].target_pose.pose.position.x, routineB[i].target_pose.pose.position.y);
+
+			// Send the goal to move_base
+			move_base_client_.sendGoal(routineB[i]);
+			// wait for the result
+			move_base_client_.waitForResult();
+            // wait for stable routine
+            ros::Duration(0.5).sleep();
+		}
+		
+		if (move_base_client_.getState() == actionlib::SimpleClientGoalState::SUCCEEDED)
+			ROS_INFO("The robot reached the Placing Pose successfully.");
+		else
+			ROS_WARN("The robot failed to reach the Placing Pose.");
+    }
+    
     void liftTorso() {
         // Define the goal for lifting the torso
         control_msgs::FollowJointTrajectoryGoal goal;
@@ -315,8 +414,12 @@ private:
 	ros::Publisher tilt_cam_pub; // publisher for the initial tilt of the camera
 	ros::Publisher detection_pub; // Publisher to send commands to NodeB
 	ros::Subscriber picking_sub;   // Subscriber to listen to status updates from NodeB
+    ros::Subscriber object_detection_sub; // subscriber for apriltag detection
     TrajectoryClient head_client;
     TrajectoryClient torso_client_;
+    geometry_msgs::PoseStamped frame_in_bf;
+    tf2_ros::Buffer tf_buffer; 
+    tf2_ros::TransformBroadcaster tf_broadcaster_;
 	
 };
 
@@ -334,7 +437,25 @@ int main(int argc, char** argv)
 
     nodeA.liftTorso();
 
-	nodeA.moveHead();
+    // START THE LOOP
+    for(size_t i = 0; i < 3; i++)
+    {
+	    nodeA.moveHead();
+        ros::Rate rate(1);
+        while(ros::ok() && !nodeA.picked_object) 
+        {
+            ros::spinOnce(); // Process callbacks
+            rate.sleep();
+        }   
+        nodeA.picked_object = false;
+        nodeA.navigateToPlacingPose();
+        nodeA.activated = true;
+        ros::spinOnce(); // Process callbacks
+        ros::Duration(1.0).sleep();
+
+
+
+    }
     // send goal to Node_B to detect a pickable object and pick it
     // send goal to Node_C to pick that object and 
     // manipulate it for transportation
