@@ -429,6 +429,10 @@ public:
         initial_joint_positions["arm_6_joint"] = 1.370;  // Wrist yaw
         initial_joint_positions["arm_7_joint"] = 0.0;   // End-effector roll
         move_group.setJointValueTarget(initial_joint_positions);  
+        if (!move_group.setJointValueTarget(initial_joint_positions)) {
+            ROS_ERROR("Invalid or unreachable initial joint configuration.");
+            return;
+        }
         move_group.setPlanningTime(10.0); // Increase to 10 seconds or more
         ROS_INFO("Setting initial configuration for Tiago's arm...");
         bool success = (move_group.plan(plan) == moveit::planning_interface::MoveItErrorCode::SUCCESS);
@@ -494,7 +498,7 @@ public:
         ROS_INFO("Motion to target position completed.");
     }
 
-// method to add the table as a collision object
+    // method to add the table as a collision object
     void CollisionTable(moveit::planning_interface::PlanningSceneInterface planning_scene)
     {
 
@@ -531,10 +535,8 @@ public:
         // apply all the collision objects
 		ros::topic::waitForMessage<moveit_msgs::PlanningScene>("/move_group/monitored_planning_scene", ros::Duration(5.0));
 		bool success = planning_scene.applyCollisionObjects(collision_objects);
-		if(success) ROS_INFO("Successfully added all collision objects");
+		if(success) ROS_INFO("Successfully added the collision objects");
 		else ROS_WARN("Failed to add the collision objects");
-        collision_objects.clear();
-
     }   
 
     geometry_msgs::Pose computePlacingPose(int i)
@@ -661,12 +663,12 @@ public:
     void Placing(int i)
     {
         // Initialize MoveIt interfaces
+        moveit::planning_interface::PlanningSceneInterface planning_scene;
+        CollisionTable(planning_scene);
         moveit::planning_interface::MoveGroupInterface move_group("arm");
         // Change the end effector frame to perform the picking operation
         move_group.setEndEffectorLink("gripper_base_link");
-        moveit::planning_interface::PlanningSceneInterface planning_scene;
         moveit::planning_interface::MoveGroupInterface::Plan plan;
-        CollisionTable(planning_scene);
         initial_config(move_group, planning_scene, plan);
         // Create the pose to place the object based on the line equation
         geometry_msgs::Pose placing_pose = computePlacingPose(i);
@@ -676,6 +678,17 @@ public:
         openGripper();
 
 
+        std::vector<std::string> names = planning_scene.getKnownObjectNames();
+        planning_scene.removeCollisionObjects(names);
+        // clear scene to not move it with the robot
+        collision_objects.clear();
+            
+        // Check if the planning scene is now clear
+        if (planning_scene.getKnownObjectNames().empty()) {
+            ROS_INFO("Successfully cleared the planning scene.");
+        } else {
+            ROS_WARN("Some collision objects could not be removed.");
+        }
     }
 
 private:
@@ -708,6 +721,8 @@ int main(int argc, char** argv)
 {
     ros::init(argc, argv, "Node_A");
     ros::NodeHandle nh;
+    ros::AsyncSpinner spinner(4);
+    spinner.start();
 
     NodeA nodeA(nh); // Node_A constructor
 	// Get m and q
