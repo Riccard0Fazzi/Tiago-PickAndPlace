@@ -19,7 +19,16 @@
 #include <tf2_ros/transform_broadcaster.h>
 #include <geometry_msgs/TransformStamped.h> // For TF message
 
+// import for MoveIt!
+#include <moveit/move_group_interface/move_group_interface.h>
+#include <moveit/planning_scene_interface/planning_scene_interface.h>
+#include <moveit_msgs/CollisionObject.h>
+
+#include <gazebo_ros_link_attacher/Attach.h>
+
+
 // Alias for the move_base action client
+
 typedef actionlib::SimpleActionClient<move_base_msgs::MoveBaseAction> MoveBaseClient;
 typedef actionlib::SimpleActionClient<control_msgs::FollowJointTrajectoryAction> TrajectoryClient;
 
@@ -35,7 +44,10 @@ public:
         : client_(nh.serviceClient<tiago_iaslab_simulation::Coeffs>("/straight_line_srv")), // service client to the straight line service
           move_base_client_("/move_base", true), // action client to the move_base action server
           head_client("/head_controller/follow_joint_trajectory", true),
-          torso_client_("/torso_controller/follow_joint_trajectory", true) 
+          torso_client_("/torso_controller/follow_joint_trajectory", true),
+          attach_client(nh.serviceClient<gazebo_ros_link_attacher::Attach>("/link_attacher_node/detach")),
+          gripper_client("/parallel_gripper_controller/follow_joint_trajectory", true)
+
     {
         ROS_INFO("Node A initialized and ready to call /straight_line_srv service.");
         // Wait for the move_base action server to start
@@ -54,6 +66,8 @@ public:
         ROS_INFO("Waiting for torso controller action server...");
         torso_client_.waitForServer();
         ROS_INFO("Connected to torso controller action server.");
+        ROS_INFO("Waiting for gripper action server...");
+        gripper_client.waitForServer();
 		// set up the two routines 
 		initialize_routines(); 
         picked_object = false;
@@ -70,7 +84,8 @@ public:
 			ROS_INFO("Picking completed!");
 			ROS_INFO("Starting placing procedure");
             picked_object = true;
-			return;
+            id = msg->id;	// saving the ID of the object that will be used to detach		
+            return;
 		}
 	}
 
@@ -101,7 +116,7 @@ public:
                     while (ros::ok()) {
                         if(tf_buffer.canTransform("base_footprint", frame.header.frame_id, ros::Time::now(), ros::Duration(1.0))) {
                             try {
-                                tf_buffer.transform(frame, frame_in_bf, "base_footprint", ros::Duration(0.1));
+                                tf_buffer.transform(frame, line_origin, "base_footprint", ros::Duration(0.1));
                                 break;  // Exit loop after successful transformation
                             } catch (tf2::TransformException &ex) {
                                 ROS_WARN("Could not transform pose from %s to base_footprint frame: %s", frame.header.frame_id.c_str(), ex.what());
@@ -118,10 +133,10 @@ public:
                     transform_stamped.child_frame_id = "placing_tag_pose"; // Frame name for visualization
 
                     // Set the translation and rotation from the pose of the collision object
-                    transform_stamped.transform.translation.x = frame_in_bf.pose.position.x;
-                    transform_stamped.transform.translation.y = frame_in_bf.pose.position.y;
-                    transform_stamped.transform.translation.z = frame_in_bf.pose.position.z;
-                    transform_stamped.transform.rotation = frame_in_bf.pose.orientation;
+                    transform_stamped.transform.translation.x = line_origin.pose.position.x;
+                    transform_stamped.transform.translation.y = line_origin.pose.position.y;
+                    transform_stamped.transform.translation.z = line_origin.pose.position.z;
+                    transform_stamped.transform.rotation = line_origin.pose.orientation;
 
                     // Publish the transformation
                     tf_broadcaster_.sendTransform(transform_stamped);
@@ -400,6 +415,268 @@ public:
             ROS_ERROR("Failed to lift torso.");
         }
     }
+    
+    void initial_config(moveit::planning_interface::MoveGroupInterface& move_group,
+                            moveit::planning_interface::PlanningSceneInterface& planning_scene,
+                            moveit::planning_interface::MoveGroupInterface::Plan& plan){
+        // Set initial configuration for Tiago's arm
+        std::map<std::string, double> initial_joint_positions;
+        initial_joint_positions["arm_1_joint"] = 0.070;   // Base joint
+        initial_joint_positions["arm_2_joint"] = 0.858; // Shoulder joint
+        initial_joint_positions["arm_3_joint"] = -0.113;   // Elbow joint
+        initial_joint_positions["arm_4_joint"] = 0.766; // Forearm
+        initial_joint_positions["arm_5_joint"] = -1.570;   // Wrist pitch
+        initial_joint_positions["arm_6_joint"] = 1.370;  // Wrist yaw
+        initial_joint_positions["arm_7_joint"] = 0.0;   // End-effector roll
+        move_group.setJointValueTarget(initial_joint_positions);  
+        move_group.setPlanningTime(10.0); // Increase to 10 seconds or more
+        ROS_INFO("Setting initial configuration for Tiago's arm...");
+        bool success = (move_group.plan(plan) == moveit::planning_interface::MoveItErrorCode::SUCCESS);
+        if (!success) {
+            ROS_ERROR("Failed to plan motion to initial configuration.");
+            return;
+        }
+        success = (move_group.execute(plan) == moveit::planning_interface::MoveItErrorCode::SUCCESS);
+        if (!success) {
+            ROS_ERROR("Failed to execute motion to initial configuration.");
+            return;
+        }
+        ROS_INFO("Initial configuration set successfully.");
+    }
+
+    void approach(moveit::planning_interface::MoveGroupInterface& move_group,
+                            moveit::planning_interface::PlanningSceneInterface& planning_scene,
+                            moveit::planning_interface::MoveGroupInterface::Plan& plan,
+                            geometry_msgs::Pose& pose ){
+
+        // Set the target pose above the marker (10 cm above)
+        // Set the orientation for z-axis pointing downwards
+        tf2::Quaternion orientation_downwards;
+        pose.position.z += 0.25;
+        tf2::Quaternion current_orientation(
+            pose.orientation.x,
+            pose.orientation.y,
+            pose.orientation.z,
+            pose.orientation.w);
+
+        // Step 3: Define the rotation about the x-axis (180°)
+        tf2::Quaternion rotation_about_x;
+        rotation_about_x.setRPY(M_PI, 0, 0); // Roll = 180°, Pitch = 0°, Yaw = 0°
+
+        // Step 4: Combine the current orientation with the rotation
+        tf2::Quaternion combined_orientation = current_orientation * rotation_about_x;
+        combined_orientation.normalize(); // Ensure the quaternion is normalized
+
+        // Step 5: Assign the combined orientation back to the target pose
+        pose.orientation.x = combined_orientation.x();
+        pose.orientation.y = combined_orientation.y();
+        pose.orientation.z = combined_orientation.z();
+        pose.orientation.w = combined_orientation.w(); 
+        
+        bool is_within_bounds = move_group.setPoseTarget(pose);
+        if (!is_within_bounds) {
+            ROS_ERROR("Target pose is outside the robot's workspace.");
+            return;
+        }
+
+        // Plan and execute the motion to the target pose
+        ROS_INFO("Planning motion to target position above the marker...");
+        bool success = (move_group.plan(plan) == moveit::planning_interface::MoveItErrorCode::SUCCESS);
+        if (!success) {
+            ROS_ERROR("Failed to plan motion to target position.");
+            return;
+        }
+        success = (move_group.execute(plan) == moveit::planning_interface::MoveItErrorCode::SUCCESS);
+        if (!success) {
+            ROS_ERROR("Failed to execute motion to target position.");
+            return;
+        }
+        ROS_INFO("Motion to target position completed.");
+    }
+
+// method to add the table as a collision object
+    void CollisionTable(moveit::planning_interface::PlanningSceneInterface planning_scene)
+    {
+
+        // Table dimensions (slightly larger than real ones for safety)
+        double table_size = 0.95; 
+
+        // Pick-up table
+        moveit_msgs::CollisionObject pickup_table;
+        pickup_table.header.frame_id = "base_footprint";  // Use map as the reference frame
+        pickup_table.id = "pickup_table";
+
+        // Define cube dimensions
+        shape_msgs::SolidPrimitive pickup_table_primitive;
+        pickup_table_primitive.type = shape_msgs::SolidPrimitive::BOX;
+        pickup_table_primitive.dimensions.resize(3);
+        pickup_table_primitive.dimensions[0] = table_size; // Length
+        pickup_table_primitive.dimensions[1] = table_size; // Width
+        pickup_table_primitive.dimensions[2] = 0.78; // Height
+
+        // Define the pose
+        geometry_msgs::Pose pickup_table_pose;
+        //pickup_table_pose.position.x = 7.88904; // Adjust based on the workspace
+        //pickup_table_pose.position.y = -2.99049; // Adjust based on the workspace
+        pickup_table_pose.position.x = 0.82; // Adjust based on the workspace
+        pickup_table_pose.position.y = 0.02; // Adjust based on the workspace
+        pickup_table_pose.position.z = 0.375; // Half the height of the table for the center point
+
+        // Assign primitive and pose to the collision object
+        pickup_table.primitives.push_back(pickup_table_primitive);
+        pickup_table.primitive_poses.push_back(pickup_table_pose);
+        pickup_table.operation = moveit_msgs::CollisionObject::ADD;
+
+        collision_objects.push_back(pickup_table);
+        // apply all the collision objects
+		ros::topic::waitForMessage<moveit_msgs::PlanningScene>("/move_group/monitored_planning_scene", ros::Duration(5.0));
+		bool success = planning_scene.applyCollisionObjects(collision_objects);
+		if(success) ROS_INFO("Successfully added all collision objects");
+		else ROS_WARN("Failed to add the collision objects");
+        collision_objects.clear();
+
+    }   
+
+    geometry_msgs::Pose computePlacingPose(int i)
+    {
+        // set the x coordinates to place the object
+        std::vector<double> x_coordinates = {0.20,0.45,0.70};
+        double y_coordinate = (m * x_coordinates[i]) + q;
+        geometry_msgs::Pose placing_pose = line_origin.pose;
+        placing_pose.position.x += x_coordinates[i];
+        placing_pose.position.y += y_coordinate;
+        return placing_pose;
+    }
+
+    void reach(moveit::planning_interface::MoveGroupInterface& move_group,
+                        moveit::planning_interface::PlanningSceneInterface& planning_scene,
+                        moveit::planning_interface::MoveGroupInterface::Plan& plan,
+                        geometry_msgs::Pose& pose ){
+        // Perform linear movement to grasp the object
+        geometry_msgs::Pose target_pose = pose;
+
+        // Add 0.25m offset along the z-axis
+        target_pose.position.z -= 0.20;
+
+        ROS_INFO("Planning Cartesian path to touch the object...");
+        std::vector<geometry_msgs::Pose> waypoints;
+        waypoints.push_back(pose);
+        waypoints.push_back(target_pose);
+
+        moveit_msgs::RobotTrajectory trajectory;
+        const double eef_step = 0.01; // Step size for end-effector
+        double fraction = move_group.computeCartesianPath(waypoints, eef_step, trajectory);
+
+        ROS_INFO("Cartesian path planning reached %.2f%% of its trajectory", fraction * 100);
+
+        // Execute the trajectory
+        moveit::planning_interface::MoveGroupInterface::Plan cartesian_plan;
+        cartesian_plan.trajectory_ = trajectory;
+
+        ROS_INFO("Executing Cartesian path...");
+        bool success = (move_group.execute(cartesian_plan) == moveit::planning_interface::MoveItErrorCode::SUCCESS);
+        if (!success) {
+            ROS_ERROR("Failed to execute Cartesian path.");
+            return;
+        }
+    }
+
+    void detach(int32_t id) {
+
+        gazebo_ros_link_attacher::Attach srv;
+        srv.request.model_name_1 = "tiago";  // Name of the robot (gripper)
+        std::string name;
+        std::string link_name;
+        if(id <= 3){
+            // hexagons
+            if(id == 1){
+                name = "Hexagon";
+                link_name = "Hexagon_link";
+            }
+            else{
+                name = "Hexagon_" + std::to_string(id);
+                link_name = "Hexagon_" + std::to_string(id) + "_link";
+            }
+        }
+        else if(id <= 6){
+            // cubes
+            if(id == 4){
+                name = "cube";
+                link_name = "cube_link";
+            }
+            else{
+                name = "cube_" + std::to_string(id);
+                link_name = "cube_" + std::to_string(id) + "_link";
+            }
+        }
+        else{
+            // triangle
+            if(id == 7){
+                name = "Triangle";
+                link_name = "Triangle_link";
+            }
+            else{
+                name = "Triangle_" + std::to_string(id);
+                link_name = "Triangle_" + std::to_string(id) + "_link";
+            }
+        }
+        srv.request.model_name_2 = name; // Object to be attached
+        srv.request.link_name_1 = "arm_7_link";  // Link name of the gripper
+        srv.request.link_name_2 = link_name;   // Link name of the object
+
+
+        if (attach_client.call(srv)) {
+            ROS_INFO("Successfully detached object to the gripper.");
+            return;
+        } else {
+            ROS_ERROR("Failed to detached object to the gripper.");
+            return;
+        }
+    }
+
+    void openGripper(){
+
+        ROS_INFO("Opening the gripper...");
+        // Create the trajectory goal
+        control_msgs::FollowJointTrajectoryGoal goal;
+        goal.trajectory.joint_names.push_back("gripper_joint"); // Replace with your gripper joint name
+
+        trajectory_msgs::JointTrajectoryPoint point;
+        point.positions.push_back(1.0); // Fully closed position
+        point.time_from_start = ros::Duration(1.0); // Adjust time for motion
+
+        goal.trajectory.points.push_back(point);
+
+        ROS_INFO("Sending gripper open trajectory goal...");
+        gripper_client.sendGoal(goal);
+
+        bool success = gripper_client.waitForResult(ros::Duration(5.0));
+        if (success) {
+            ROS_INFO("Gripper opened successfully.");
+        } else {
+            ROS_ERROR("Failed to open the gripper.");
+        }
+    }
+    
+    void Placing(int i)
+    {
+        // Initialize MoveIt interfaces
+        moveit::planning_interface::MoveGroupInterface move_group("arm");
+        // Change the end effector frame to perform the picking operation
+        move_group.setEndEffectorLink("gripper_base_link");
+        moveit::planning_interface::PlanningSceneInterface planning_scene;
+        moveit::planning_interface::MoveGroupInterface::Plan plan;
+        CollisionTable(planning_scene);
+        initial_config(move_group, planning_scene, plan);
+        // Create the pose to place the object based on the line equation
+        geometry_msgs::Pose placing_pose = computePlacingPose(i);
+        approach(move_group, planning_scene, plan, placing_pose);
+        reach(move_group, planning_scene, plan, placing_pose);
+        detach(id);
+        openGripper();
+
+
+    }
 
 private:
 
@@ -417,10 +694,14 @@ private:
     ros::Subscriber object_detection_sub; // subscriber for apriltag detection
     TrajectoryClient head_client;
     TrajectoryClient torso_client_;
-    geometry_msgs::PoseStamped frame_in_bf;
+    geometry_msgs::PoseStamped line_origin;
     tf2_ros::Buffer tf_buffer; 
     tf2_ros::TransformBroadcaster tf_broadcaster_;
-	
+    std::vector<moveit_msgs::CollisionObject> collision_objects; // vector containing all collision objects detected
+	bool id; // id of the picked object
+    ros::ServiceClient attach_client;
+    TrajectoryClient gripper_client;
+
 };
 
 int main(int argc, char** argv)
@@ -452,7 +733,8 @@ int main(int argc, char** argv)
         nodeA.activated = true;
         ros::spinOnce(); // Process callbacks
         ros::Duration(1.0).sleep();
-
+        nodeA.Placing(i);
+        
 
 
     }

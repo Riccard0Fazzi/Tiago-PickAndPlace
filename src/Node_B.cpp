@@ -257,9 +257,10 @@ class NodeB
         void initialize_picking()
         {
             // choose pickable object among the objects detected
+            int id;
             for(const auto& object : collision_objects)
             {
-                int id = stoi(object.id);
+                id = stoi(object.id);
                 if(id >= 4 && id < 7){
                     // send the goal of the collision object
                     goal.ID = id;
@@ -302,6 +303,7 @@ class NodeB
             // publish the message to NodeA to declare picking termination
             ir2425_group_24_a2::picking_completed msg; 
             msg.picking_completed = true;
+            msg.id = id;
             picking_pub.publish(msg);
             ros::spinOnce();  
         }
