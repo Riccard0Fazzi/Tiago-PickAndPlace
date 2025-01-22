@@ -126,22 +126,6 @@ public:
                             } 
                             rate.sleep();    
                         }
-                        
-                        // PUBLISH THE FRAME HERE
-                        geometry_msgs::TransformStamped transform_stamped;
-                        transform_stamped.header.stamp = ros::Time::now();
-                        transform_stamped.header.frame_id = "base_footprint"; // Parent frame 
-                        transform_stamped.child_frame_id = "placing_tag_pose"; // Frame name for visualization
-
-                        // Set the translation and rotation from the pose of the collision object
-                        transform_stamped.transform.translation.x = line_origin.pose.position.x;
-                        transform_stamped.transform.translation.y = line_origin.pose.position.y;
-                        transform_stamped.transform.translation.z = line_origin.pose.position.z;
-                        transform_stamped.transform.rotation = line_origin.pose.orientation;
-
-                        // Publish the transformation
-                        tf_broadcaster_.sendTransform(transform_stamped);
-                        ros::spinOnce();
                     }
                 }
                 activated = false;
@@ -240,6 +224,7 @@ public:
 
     void initializeDetection() {
         ir2425_group_24_a2::detection msg;
+        
 
         // Define pan and tilt points
         std::vector<std::pair<double, double>> positions = {
@@ -248,7 +233,11 @@ public:
             {-M_PI / 7.2, -M_PI / 4.0},         // Look right 50 degrees (from the previous position, maintaining down as 1)
             {0.0, -M_PI / 4.0}   
         };
-
+        // Publish the message to initialize detection
+        msg.collect = true;
+        // Publish detection message 
+        detection_pub.publish(msg);
+        ros::spinOnce();
         // Iterate through the positions
         for (const auto& pos : positions) {
             // Create a FollowJointTrajectoryGoal message
@@ -276,13 +265,16 @@ public:
             }
             // Wait for one second before moving to the next position
             ros::Duration(1.0).sleep();
+            // Publish the message to initialize detection
+            msg.collect = true;
+            // Publish detection message 
+            detection_pub.publish(msg);
+            ros::spinOnce();
+            ros::Duration(1.0).sleep();
+
         }
 
         ROS_INFO("Camera movement routine completed.");
-        msg.collect = true;
-        // Publish detection message 
-        detection_pub.publish(msg);
-        ros::spinOnce();
 
     }
 
@@ -291,12 +283,12 @@ public:
 
         // Define pan and tilt points
         std::vector<std::pair<double, double>> positions = {
-            {0.0, -M_PI / 4.0},          // Initial position (looking down 50 degrees)
             {+M_PI / 7.2, -M_PI / 4.0},  // Look left 25 degrees (maintaining down)
             {0.0, -M_PI / 4.0}           // Return to initial position   
         };
+        int i = 0;
         for (const auto& pos : positions) {
-            
+
             // Create a FollowJointTrajectoryGoal message
             control_msgs::FollowJointTrajectoryGoal goal;
             goal.trajectory.joint_names = {"head_1_joint", "head_2_joint"};
@@ -322,9 +314,10 @@ public:
             }
             // Wait for one second before moving to the next position
             ros::Duration(1.0).sleep();
+            if(i == 1)  activated = true;
+            i++;
+            ros::Duration(1.0).sleep();
         }
-        activated = true;
-        ros::Duration(1.0).sleep();
         ROS_INFO("Camera movement routine completed.");
         ros::spinOnce();
 
@@ -572,25 +565,10 @@ public:
     geometry_msgs::Pose computePlacingPose(int i)
     {
         // set the x coordinates to place the object
-        std::vector<double> x_coordinates = {0.20,0.45,0.70};
         double y_coordinate = (m * x_coordinates[i]) + q;
         geometry_msgs::Pose placing_pose = line_origin.pose;
         placing_pose.position.x += x_coordinates[i];
         placing_pose.position.y += y_coordinate;
-          // PUBLISH THE FRAME HERE
-        geometry_msgs::TransformStamped transform_stamped;
-        transform_stamped.header.stamp = ros::Time::now();
-        transform_stamped.header.frame_id = "base_footprint"; // Parent frame 
-        transform_stamped.child_frame_id = "placing_pose"; // Frame name for visualization
-
-        // Set the translation and rotation from the pose of the collision object
-        transform_stamped.transform.translation.x = placing_pose.position.x;
-        transform_stamped.transform.translation.y = placing_pose.position.y;
-        transform_stamped.transform.translation.z = placing_pose.position.z;
-        transform_stamped.transform.rotation = placing_pose.orientation;
-
-        // Publish the transformation
-        tf_broadcaster_.sendTransform(transform_stamped);
         return placing_pose;
     }
 
@@ -713,10 +691,40 @@ public:
         // Change the end effector frame to perform the picking operation
         move_group.setEndEffectorLink("gripper_base_link");
         moveit::planning_interface::MoveGroupInterface::Plan plan;
-        moveHead();
+        moveHead(); 
+                        // PUBLISH THE FRAME HERE
+                        geometry_msgs::TransformStamped transform_stamped;
+                        transform_stamped.header.stamp = ros::Time::now();
+                        transform_stamped.header.frame_id = "base_footprint"; // Parent frame 
+                        transform_stamped.child_frame_id = "placing_tag_pose"; // Frame name for visualization
+
+                        // Set the translation and rotation from the pose of the collision object
+                        transform_stamped.transform.translation.x = line_origin.pose.position.x;
+                        transform_stamped.transform.translation.y = line_origin.pose.position.y;
+                        transform_stamped.transform.translation.z = line_origin.pose.position.z;
+                        transform_stamped.transform.rotation = line_origin.pose.orientation;
+
+                        // Publish the transformation
+                        tf_broadcaster_.sendTransform(transform_stamped);
+                        ros::spinOnce();
+
         initial_config(move_group, planning_scene, plan);
         // Create the pose to place the object based on the line equation
         geometry_msgs::Pose placing_pose = computePlacingPose(i);
+          // PUBLISH THE FRAME HERE
+                        transform_stamped.header.stamp = ros::Time::now();
+                        transform_stamped.header.frame_id = "base_footprint"; // Parent frame 
+                        transform_stamped.child_frame_id = "compute_placing_pose"; // Frame name for visualization
+
+                        // Set the translation and rotation from the pose of the collision object
+                        transform_stamped.transform.translation.x = placing_pose.position.x;
+                        transform_stamped.transform.translation.y = placing_pose.position.y;
+                        transform_stamped.transform.translation.z = placing_pose.position.z;
+                        transform_stamped.transform.rotation = placing_pose.orientation;
+
+                        // Publish the transformation
+                        tf_broadcaster_.sendTransform(transform_stamped);
+                        ros::spinOnce();
         approach(move_group, planning_scene, plan, placing_pose);
         reach(move_group, planning_scene, plan, placing_pose);
         detach(id);
@@ -759,6 +767,8 @@ private:
 	bool id; // id of the picked object
     ros::ServiceClient attach_client;
     TrajectoryClient gripper_client;
+    std::vector<double> x_coordinates = {0.20,0.45,0.70};
+
 
 };
 

@@ -126,11 +126,17 @@ class NodeB
                 int id;
                 for(const auto& detection : msg->detections){
                     id = detection.id[0];
+                    ROS_INFO("Detected object id: %d",id);
+                   for(const auto& object : collision_objects){
+                        if(stoi(object.id)==id){
+                            return;
+                        }
+                    }
                     // get the pose of the object
                     geometry_msgs::PoseStamped frame;
                     frame.header.seq = static_cast<uint32_t>(id); // saving ID
                     frame.header.frame_id = detection.pose.header.frame_id; // Get frame_id from the detection
-                    ROS_INFO("Detected object ID: %u",frame.header.seq);
+                    //ROS_INFO("Detected object ID: %u",frame.header.seq);
                     frame.pose.position = detection.pose.pose.pose.position; // saving position
                     frame.pose.orientation = detection.pose.pose.pose.orientation;// saving orientation	
                     // Define a transform from the camera frame (or detected frame) to the map frame
@@ -189,9 +195,8 @@ class NodeB
                     collision_object.operation = moveit_msgs::CollisionObject::ADD;
                     collision_objects.push_back(collision_object);
                 }
-                activated = false;
-                initialize_picking();
             }
+            activated = false;
 		}
 
         // method to add the table as a collision object
