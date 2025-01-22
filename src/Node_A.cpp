@@ -98,38 +98,35 @@ public:
             if(msg->detections.empty()){
                 return;
             }
-
             // callBack always running, saving detected poses only when required
-            if (activated) {
-                for(const auto& detection : msg->detections){
-                    int id = detection.id[0];
-                    if(id==10){
-                        // get the pose of the object
-                        geometry_msgs::PoseStamped frame;
-                        frame.header.seq = static_cast<uint32_t>(id); // saving ID
-                        frame.header.frame_id = detection.pose.header.frame_id; // Get frame_id from the detection
-                        ROS_INFO("Detected object ID: %u",frame.header.seq);
-                        frame.pose.position = detection.pose.pose.pose.position; // saving position
-                        frame.pose.orientation = detection.pose.pose.pose.orientation;// saving orientation	
-                        // Define a transform from the camera frame (or detected frame) to the map frame
-                        tf2_ros::TransformListener tf_listener(tf_buffer);
-                        ros::Rate rate(100.0);  // Loop frequency in Hz
-                        // transform from camera frame to map frame
-                        while (ros::ok()) {
-                            if(tf_buffer.canTransform("base_footprint", frame.header.frame_id, ros::Time::now(), ros::Duration(1.0))) {
-                                try {
-                                    tf_buffer.transform(frame, line_origin, "base_footprint", ros::Duration(0.1));
-                                    break;  // Exit loop after successful transformation
-                                } catch (tf2::TransformException &ex) {
-                                    ROS_WARN("Could not transform pose from %s to base_footprint frame: %s", frame.header.frame_id.c_str(), ex.what());
-                                }
-                            } 
-                            rate.sleep();    
+            for(const auto& detection : msg->detections){
+                int id = detection.id[0];
+                ROS_INFO("Detected object ID: %d",id);
+                if(id==10 && line_origin.header.frame_id.empty()){
+                    // get the pose of the object
+                    geometry_msgs::PoseStamped frame;
+                    frame.header.seq = static_cast<uint32_t>(id); // saving ID
+                    frame.header.frame_id = detection.pose.header.frame_id; // Get frame_id from the detection
+                    frame.pose.position = detection.pose.pose.pose.position; // saving position
+                    frame.pose.orientation = detection.pose.pose.pose.orientation;// saving orientation	
+                    // Define a transform from the camera frame (or detected frame) to the map frame
+                    tf2_ros::TransformListener tf_listener(tf_buffer);
+                    ros::Rate rate(100.0);  // Loop frequency in Hz
+                    // transform from camera frame to map frame
+                    while (ros::ok()) {
+                    if(tf_buffer.canTransform("base_footprint", frame.header.frame_id, ros::Time::now(), ros::Duration(1.0))) {
+                        try {
+                            tf_buffer.transform(frame, line_origin, "base_footprint", ros::Duration(0.1));
+                            break;  // Exit loop after successful transformation
+                        } catch (tf2::TransformException &ex) {
+                            ROS_WARN("Could not transform pose from %s to base_footprint frame: %s", frame.header.frame_id.c_str(), ex.what());
                         }
+                    } 
+                    rate.sleep();    
                     }
                 }
-                activated = false;
             }
+            activated = false;
 	}
 
 	void initialize_routines()
@@ -233,11 +230,6 @@ public:
             {-M_PI / 7.2, -M_PI / 4.0},         // Look right 50 degrees (from the previous position, maintaining down as 1)
             {0.0, -M_PI / 4.0}   
         };
-        // Publish the message to initialize detection
-        msg.collect = true;
-        // Publish detection message 
-        detection_pub.publish(msg);
-        ros::spinOnce();
         // Iterate through the positions
         for (const auto& pos : positions) {
             // Create a FollowJointTrajectoryGoal message
@@ -273,6 +265,11 @@ public:
             ros::Duration(1.0).sleep();
 
         }
+        msg.collect = false;
+        // Publish detection message 
+        detection_pub.publish(msg);
+        ros::spinOnce();
+        ros::Duration(1.0).sleep();
 
         ROS_INFO("Camera movement routine completed.");
 
@@ -312,11 +309,13 @@ public:
             if (head_client.getState() != actionlib::SimpleClientGoalState::SUCCEEDED) {
                 ROS_WARN("Failed to move camera to position: pan=%f, tilt=%f", pos.first, pos.second);
             }
-            // Wait for one second before moving to the next position
-            ros::Duration(1.0).sleep();
-            if(i == 1)  activated = true;
+            if(i == 1){
+                // Wait for one second before moving to the next position
+                ros::Duration(1.0).sleep();
+                activated = true;
+                ros::Duration(1.0).sleep();
+            }  
             i++;
-            ros::Duration(1.0).sleep();
         }
         ROS_INFO("Camera movement routine completed.");
         ros::spinOnce();

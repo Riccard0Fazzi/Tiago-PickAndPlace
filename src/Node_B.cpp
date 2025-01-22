@@ -67,6 +67,9 @@ class NodeB
                 activated = true;
 				return;
             }
+            else if(!msg->collect){
+                initialize_picking();
+            }
 		}
 
 
@@ -126,74 +129,88 @@ class NodeB
                 int id;
                 for(const auto& detection : msg->detections){
                     id = detection.id[0];
-                    ROS_INFO("Detected object id: %d",id);
-                   for(const auto& object : collision_objects){
+                    //ROS_INFO("Detected object id: %d",id);
+                    bool already_detected = false;
+                    for(const auto& object : collision_objects){
                         if(stoi(object.id)==id){
-                            return;
+                            already_detected = true;
+                            break;
                         }
                     }
-                    // get the pose of the object
-                    geometry_msgs::PoseStamped frame;
-                    frame.header.seq = static_cast<uint32_t>(id); // saving ID
-                    frame.header.frame_id = detection.pose.header.frame_id; // Get frame_id from the detection
-                    //ROS_INFO("Detected object ID: %u",frame.header.seq);
-                    frame.pose.position = detection.pose.pose.pose.position; // saving position
-                    frame.pose.orientation = detection.pose.pose.pose.orientation;// saving orientation	
-                    // Define a transform from the camera frame (or detected frame) to the map frame
-                    geometry_msgs::PoseStamped frame_in_bf;
-                    tf2_ros::TransformListener tf_listener(tf_buffer);
-                    ros::Rate rate(100.0);  // Loop frequency in Hz
-                    // transform from camera frame to map frame
-                    while (ros::ok()) {
-                        if(tf_buffer.canTransform("base_footprint", frame.header.frame_id, ros::Time::now(), ros::Duration(1.0))) {
-                            try {
-                                tf_buffer.transform(frame, frame_in_bf, "base_footprint", ros::Duration(0.1));
-                                break;  // Exit loop after successful transformation
-                            } catch (tf2::TransformException &ex) {
-                                ROS_WARN("Could not transform pose from %s to base_footprint frame: %s", frame.header.frame_id.c_str(), ex.what());
+                    if(!already_detected){
+                            // get the pose of the object
+                            geometry_msgs::PoseStamped frame;
+                            frame.header.seq = static_cast<uint32_t>(id); // saving ID
+                            frame.header.frame_id = detection.pose.header.frame_id; // Get frame_id from the detection
+                            //ROS_INFO("Detected object ID: %u",frame.header.seq);
+                            frame.pose.position = detection.pose.pose.pose.position; // saving position
+                            frame.pose.orientation = detection.pose.pose.pose.orientation;// saving orientation	
+                            // Define a transform from the camera frame (or detected frame) to the map frame
+                            geometry_msgs::PoseStamped frame_in_bf;
+                            tf2_ros::TransformListener tf_listener(tf_buffer);
+                            ros::Rate rate(100.0);  // Loop frequency in Hz
+                            // transform from camera frame to map frame
+                            while (ros::ok()) {
+                                if(tf_buffer.canTransform("base_footprint", frame.header.frame_id, ros::Time::now(), ros::Duration(1.0))) {
+                                    try {
+                                        tf_buffer.transform(frame, frame_in_bf, "base_footprint", ros::Duration(0.1));
+                                        // Enforce upright orientation (x, y = 0)
+                                        frame_in_bf.pose.orientation.x = 0.0;
+                                        frame_in_bf.pose.orientation.y = 0.0;
+                                        
+                                        // Normalize orientation quaternion to ensure validity
+                                        double qw = frame_in_bf.pose.orientation.w;
+                                        double qz = frame_in_bf.pose.orientation.z;
+                                        double norm = std::sqrt(qw * qw + qz * qz);
+                                        frame_in_bf.pose.orientation.w = qw / norm;
+                                        frame_in_bf.pose.orientation.z = qz / norm;
+                                        break;  // Exit loop after successful transformation
+                                    } catch (tf2::TransformException &ex) {
+                                        ROS_WARN("Could not transform pose from %s to base_footprint frame: %s", frame.header.frame_id.c_str(), ex.what());
+                                    }
+                                } 
+                                rate.sleep();  
                             }
-                        } 
-                        rate.sleep();  
-                    }
-                    // Add the object as collision object
-                    moveit_msgs::CollisionObject collision_object;
-                    collision_object.header.frame_id = "base_footprint";  // Use map frame
-                    collision_object.id = std::to_string(id); 
-                    // fixed orientations on x and y because we 
-                    // assume that the objects are placed over 
-                    // the table (same reason for the z-correction
-                    // in position)
-                    //frame_in_bf.pose.orientation.x = 0;
-                    //frame_in_bf.pose.orientation.y = 0;
-                    // Define collision object shape 
-                    shape_msgs::SolidPrimitive primitive;
-                    if (id <= 3) {  // Hexagonal prism
-                        primitive.type = shape_msgs::SolidPrimitive::CYLINDER;
-                        primitive.dimensions.resize(2);
-                        primitive.dimensions[0] = 0.22;  // height
-                        primitive.dimensions[1] = 0.035; // radius
-                        frame_in_bf.pose.position.z = table_h + 0.11; // z-correction
-                    } else if (id <= 6) { // Cube
-                        primitive.type = shape_msgs::SolidPrimitive::BOX;
-                        primitive.dimensions.resize(3);
-                        primitive.dimensions[0] = 0.055; // (Length)
-                        primitive.dimensions[1] = 0.055; // (Base)
-                        primitive.dimensions[2] = 0.055; // (Height)
-                        frame_in_bf.pose.position.z = table_h + 0.0275; // z-correction
-                    } else { // Triangular prism
-                        primitive.type = shape_msgs::SolidPrimitive::BOX;
-                        primitive.dimensions.resize(3);
-                        primitive.dimensions[0] = 0.055;  // (Length)
-                        primitive.dimensions[1] = 0.077;  // (Base)
-                        primitive.dimensions[2] = 0.0385; // (Height)
-                        frame_in_bf.pose.position.z = table_h + 0.01925;  // z-correction
-                    }
+                            // Add the object as collision object
+                            moveit_msgs::CollisionObject collision_object;
+                            collision_object.header.frame_id = "base_footprint";  // Use map frame
+                            collision_object.id = std::to_string(id); 
+                            // fixed orientations on x and y because we 
+                            // assume that the objects are placed over 
+                            // the table (same reason for the z-correction
+                            // in position)
+                            //frame_in_bf.pose.orientation.x = 0;
+                            //frame_in_bf.pose.orientation.y = 0;
+                            // Define collision object shape 
+                            shape_msgs::SolidPrimitive primitive;
+                            if (id <= 3) {  // Hexagonal prism
+                                primitive.type = shape_msgs::SolidPrimitive::CYLINDER;
+                                primitive.dimensions.resize(2);
+                                primitive.dimensions[0] = 0.22;  // height
+                                primitive.dimensions[1] = 0.035; // radius
+                                frame_in_bf.pose.position.z = table_h + 0.11; // z-correction
+                            } else if (id <= 6) { // Cube
+                                primitive.type = shape_msgs::SolidPrimitive::BOX;
+                                primitive.dimensions.resize(3);
+                                primitive.dimensions[0] = 0.055; // (Length)
+                                primitive.dimensions[1] = 0.055; // (Base)
+                                primitive.dimensions[2] = 0.055; // (Height)
+                                frame_in_bf.pose.position.z = table_h + 0.0275; // z-correction
+                            } else { // Triangular prism
+                                primitive.type = shape_msgs::SolidPrimitive::BOX;
+                                primitive.dimensions.resize(3);
+                                primitive.dimensions[0] = 0.055;  // (Length)
+                                primitive.dimensions[1] = 0.077;  // (Base)
+                                primitive.dimensions[2] = 0.0385; // (Height)
+                                frame_in_bf.pose.position.z = table_h + 0.01925;  // z-correction
+                            }
 
-                    // add to the collision objects
-                    collision_object.primitives.push_back(primitive);
-                    collision_object.primitive_poses.push_back(frame_in_bf.pose);
-                    collision_object.operation = moveit_msgs::CollisionObject::ADD;
-                    collision_objects.push_back(collision_object);
+                            // add to the collision objects
+                            collision_object.primitives.push_back(primitive);
+                            collision_object.primitive_poses.push_back(frame_in_bf.pose);
+                            collision_object.operation = moveit_msgs::CollisionObject::ADD;
+                            collision_objects.push_back(collision_object);
+                    }
                 }
             }
             activated = false;
