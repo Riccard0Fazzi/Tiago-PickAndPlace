@@ -1,2 +1,1 @@
-bool activate_detection
-bool start_picking
+bool collect

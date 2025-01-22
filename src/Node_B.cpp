@@ -63,26 +63,9 @@ class NodeB
 		// Callback for communication with Node_A
 		void ActivateDetectionCallBack(const ir2425_group_24_a2::detection::ConstPtr& msg) {
             // msg to stop the detection and initialize the picking operation
-            if(msg->start_picking){
-                CollisionTable(); // add the table as collision object
-                // apply all the collision objects
-				ros::topic::waitForMessage<moveit_msgs::PlanningScene>("/move_group/monitored_planning_scene", ros::Duration(5.0));
-				bool success = planning_scene_interface.applyCollisionObjects(collision_objects);
-				if(success) ROS_INFO("Successfully added all collision objects");
-				else ROS_WARN("Failed to add the collision objects");
-                initialize_picking();
+            if(msg->collect){
+                activated = true;
 				return;
-            }
-            // msg to start detection
-			if(msg->activate_detection)
-			{
-				activated = true;
-				return;
-			}
-            // msg to stop detection 
-            else{
-                activated = false;
-                return;
             }
 		}
 
@@ -143,12 +126,6 @@ class NodeB
                 int id;
                 for(const auto& detection : msg->detections){
                     id = detection.id[0];
-                    // verify that it wasn't already detected
-                    for(const auto& object : collision_objects){
-                        if(stoi(object.id)==id){
-                            return;
-                        }
-                    }
                     // get the pose of the object
                     geometry_msgs::PoseStamped frame;
                     frame.header.seq = static_cast<uint32_t>(id); // saving ID
@@ -212,6 +189,8 @@ class NodeB
                     collision_object.operation = moveit_msgs::CollisionObject::ADD;
                     collision_objects.push_back(collision_object);
                 }
+                activated = false;
+                initialize_picking();
             }
 		}
 
@@ -261,6 +240,7 @@ class NodeB
             for(const auto& object : collision_objects)
             {
                 id = stoi(object.id);
+                ROS_INFO("id=%d",id);
                 if(id >= 4 && id < 7){
                     // send the goal of the collision object
                     goal.ID = id;
@@ -274,7 +254,13 @@ class NodeB
                     }
                     else{
                         goal.pose.position.z += 0.01925;
-                    } 
+                    }
+                    CollisionTable(); // add the table as collision object
+                    // apply all the collision objects
+                    ros::topic::waitForMessage<moveit_msgs::PlanningScene>("/move_group/monitored_planning_scene", ros::Duration(5.0));
+                    bool success = planning_scene_interface.applyCollisionObjects(collision_objects);
+                    if(success) ROS_INFO("Successfully added all collision objects");
+                    else ROS_WARN("Failed to add the collision objects"); 
                     picking_client_.sendGoal(goal);
 
                     // Monitor the result while allowing callbacks to process

@@ -101,45 +101,50 @@ public:
 
             // callBack always running, saving detected poses only when required
             if (activated) {
-                    int id = msg->detections[0].id[0];
-                    // get the pose of the object
-                    geometry_msgs::PoseStamped frame;
-                    frame.header.seq = static_cast<uint32_t>(id); // saving ID
-                    frame.header.frame_id = msg->detections[0].pose.header.frame_id; // Get frame_id from the detection
-                    ROS_INFO("Detected object ID: %u",frame.header.seq);
-                    frame.pose.position = msg->detections[0].pose.pose.pose.position; // saving position
-                    frame.pose.orientation = msg->detections[0].pose.pose.pose.orientation;// saving orientation	
-                    // Define a transform from the camera frame (or detected frame) to the map frame
-                    tf2_ros::TransformListener tf_listener(tf_buffer);
-                    ros::Rate rate(100.0);  // Loop frequency in Hz
-                    // transform from camera frame to map frame
-                    while (ros::ok()) {
-                        if(tf_buffer.canTransform("base_footprint", frame.header.frame_id, ros::Time::now(), ros::Duration(1.0))) {
-                            try {
-                                tf_buffer.transform(frame, line_origin, "base_footprint", ros::Duration(0.1));
-                                break;  // Exit loop after successful transformation
-                            } catch (tf2::TransformException &ex) {
-                                ROS_WARN("Could not transform pose from %s to base_footprint frame: %s", frame.header.frame_id.c_str(), ex.what());
-                            }
-                        } 
-                        rate.sleep();    
+                for(const auto& detection : msg->detections){
+                    int id = detection.id[0];
+                    if(id==10){
+                        // get the pose of the object
+                        geometry_msgs::PoseStamped frame;
+                        frame.header.seq = static_cast<uint32_t>(id); // saving ID
+                        frame.header.frame_id = detection.pose.header.frame_id; // Get frame_id from the detection
+                        ROS_INFO("Detected object ID: %u",frame.header.seq);
+                        frame.pose.position = detection.pose.pose.pose.position; // saving position
+                        frame.pose.orientation = detection.pose.pose.pose.orientation;// saving orientation	
+                        // Define a transform from the camera frame (or detected frame) to the map frame
+                        tf2_ros::TransformListener tf_listener(tf_buffer);
+                        ros::Rate rate(100.0);  // Loop frequency in Hz
+                        // transform from camera frame to map frame
+                        while (ros::ok()) {
+                            if(tf_buffer.canTransform("base_footprint", frame.header.frame_id, ros::Time::now(), ros::Duration(1.0))) {
+                                try {
+                                    tf_buffer.transform(frame, line_origin, "base_footprint", ros::Duration(0.1));
+                                    break;  // Exit loop after successful transformation
+                                } catch (tf2::TransformException &ex) {
+                                    ROS_WARN("Could not transform pose from %s to base_footprint frame: %s", frame.header.frame_id.c_str(), ex.what());
+                                }
+                            } 
+                            rate.sleep();    
+                        }
+                        
+                        // PUBLISH THE FRAME HERE
+                        geometry_msgs::TransformStamped transform_stamped;
+                        transform_stamped.header.stamp = ros::Time::now();
+                        transform_stamped.header.frame_id = "base_footprint"; // Parent frame 
+                        transform_stamped.child_frame_id = "placing_tag_pose"; // Frame name for visualization
+
+                        // Set the translation and rotation from the pose of the collision object
+                        transform_stamped.transform.translation.x = line_origin.pose.position.x;
+                        transform_stamped.transform.translation.y = line_origin.pose.position.y;
+                        transform_stamped.transform.translation.z = line_origin.pose.position.z;
+                        transform_stamped.transform.rotation = line_origin.pose.orientation;
+
+                        // Publish the transformation
+                        tf_broadcaster_.sendTransform(transform_stamped);
+                        ros::spinOnce();
                     }
-                    activated = false;
-                    
-                    // PUBLISH THE FRAME HERE
-                    geometry_msgs::TransformStamped transform_stamped;
-                    transform_stamped.header.stamp = ros::Time::now();
-                    transform_stamped.header.frame_id = "base_footprint"; // Parent frame 
-                    transform_stamped.child_frame_id = "placing_tag_pose"; // Frame name for visualization
-
-                    // Set the translation and rotation from the pose of the collision object
-                    transform_stamped.transform.translation.x = line_origin.pose.position.x;
-                    transform_stamped.transform.translation.y = line_origin.pose.position.y;
-                    transform_stamped.transform.translation.z = line_origin.pose.position.z;
-                    transform_stamped.transform.rotation = line_origin.pose.orientation;
-
-                    // Publish the transformation
-                    tf_broadcaster_.sendTransform(transform_stamped);
+                }
+                activated = false;
             }
 	}
 
@@ -201,8 +206,8 @@ public:
         // PLACING POSE
         goal.target_pose.pose.position.x = 8.53904; // x-coordinate
         goal.target_pose.pose.position.y = -1.85049; // y-coordinate
-        goal.target_pose.pose.orientation.z = 1.0; // sin(π/4)
-        goal.target_pose.pose.orientation.w = 0.0; // cos(π/4)
+        goal.target_pose.pose.orientation.z = 0.9990; // sin(π/4)
+        goal.target_pose.pose.orientation.w = -0.0436; // cos(π/4)
 
 		routineB.push_back(goal);
 
@@ -233,7 +238,7 @@ public:
 
     }
 
-    void moveHead() {
+    void initializeDetection() {
         ir2425_group_24_a2::detection msg;
 
         // Define pan and tilt points
@@ -245,24 +250,7 @@ public:
         };
 
         // Iterate through the positions
-        bool skip_first = false;
         for (const auto& pos : positions) {
-            if (skip_first) {
-                msg.activate_detection = true;
-                msg.start_picking = false;
-                // Publish detection message 
-                ros::Time now = ros::Time::now();
-                ROS_INFO("Published msg at %.2f", now.toSec());
-                detection_pub.publish(msg);
-                ros::spinOnce();
-                ros::Duration(1.0).sleep();
-                msg.activate_detection = false;
-                detection_pub.publish(msg);
-                ros::spinOnce();
-
-            }
-            skip_first = true;
-
             // Create a FollowJointTrajectoryGoal message
             control_msgs::FollowJointTrajectoryGoal goal;
             goal.trajectory.joint_names = {"head_1_joint", "head_2_joint"};
@@ -291,11 +279,53 @@ public:
         }
 
         ROS_INFO("Camera movement routine completed.");
-        msg.activate_detection = false;
-        msg.start_picking = true;
-
+        msg.collect = true;
         // Publish detection message 
         detection_pub.publish(msg);
+        ros::spinOnce();
+
+    }
+
+    void moveHead() {
+        ir2425_group_24_a2::detection msg;
+
+        // Define pan and tilt points
+        std::vector<std::pair<double, double>> positions = {
+            {0.0, -M_PI / 4.0},          // Initial position (looking down 50 degrees)
+            {+M_PI / 7.2, -M_PI / 4.0},  // Look left 25 degrees (maintaining down)
+            {0.0, -M_PI / 4.0}           // Return to initial position   
+        };
+        for (const auto& pos : positions) {
+            
+            // Create a FollowJointTrajectoryGoal message
+            control_msgs::FollowJointTrajectoryGoal goal;
+            goal.trajectory.joint_names = {"head_1_joint", "head_2_joint"};
+
+            // Create a trajectory point
+            trajectory_msgs::JointTrajectoryPoint point;
+            point.positions = {pos.first, pos.second};  // Set pan and tilt
+            point.time_from_start = ros::Duration(1.0);  // 1 second to reach the position
+            goal.trajectory.points.push_back(point);
+
+            // Send the goal
+            head_client.sendGoal(goal);
+            goal = control_msgs::FollowJointTrajectoryGoal(); // Reset to default
+            
+            // Monitor the result while allowing callbacks to process
+            while (!head_client.waitForResult(ros::Duration(0.1))) {
+                ros::spinOnce();  // Process other callbacks (e.g., Object Detection)
+            }
+
+            // Check if the goal was successfully executed
+            if (head_client.getState() != actionlib::SimpleClientGoalState::SUCCEEDED) {
+                ROS_WARN("Failed to move camera to position: pan=%f, tilt=%f", pos.first, pos.second);
+            }
+            // Wait for one second before moving to the next position
+            ros::Duration(1.0).sleep();
+        }
+        activated = true;
+        ros::Duration(1.0).sleep();
+        ROS_INFO("Camera movement routine completed.");
         ros::spinOnce();
 
     }
@@ -522,7 +552,7 @@ public:
         geometry_msgs::Pose pickup_table_pose;
         //pickup_table_pose.position.x = 7.88904; // Adjust based on the workspace
         //pickup_table_pose.position.y = -2.99049; // Adjust based on the workspace
-        pickup_table_pose.position.x = 0.82; // Adjust based on the workspace
+        pickup_table_pose.position.x = 0.77; // Adjust based on the workspace
         pickup_table_pose.position.y = 0.02; // Adjust based on the workspace
         pickup_table_pose.position.z = 0.375; // Half the height of the table for the center point
 
@@ -547,6 +577,20 @@ public:
         geometry_msgs::Pose placing_pose = line_origin.pose;
         placing_pose.position.x += x_coordinates[i];
         placing_pose.position.y += y_coordinate;
+          // PUBLISH THE FRAME HERE
+        geometry_msgs::TransformStamped transform_stamped;
+        transform_stamped.header.stamp = ros::Time::now();
+        transform_stamped.header.frame_id = "base_footprint"; // Parent frame 
+        transform_stamped.child_frame_id = "placing_pose"; // Frame name for visualization
+
+        // Set the translation and rotation from the pose of the collision object
+        transform_stamped.transform.translation.x = placing_pose.position.x;
+        transform_stamped.transform.translation.y = placing_pose.position.y;
+        transform_stamped.transform.translation.z = placing_pose.position.z;
+        transform_stamped.transform.rotation = placing_pose.orientation;
+
+        // Publish the transformation
+        tf_broadcaster_.sendTransform(transform_stamped);
         return placing_pose;
     }
 
@@ -669,6 +713,7 @@ public:
         // Change the end effector frame to perform the picking operation
         move_group.setEndEffectorLink("gripper_base_link");
         moveit::planning_interface::MoveGroupInterface::Plan plan;
+        moveHead();
         initial_config(move_group, planning_scene, plan);
         // Create the pose to place the object based on the line equation
         geometry_msgs::Pose placing_pose = computePlacingPose(i);
@@ -736,7 +781,7 @@ int main(int argc, char** argv)
     // START THE LOOP
     for(size_t i = 0; i < 3; i++)
     {
-	    nodeA.moveHead();
+	    nodeA.initializeDetection();
         ros::Rate rate(1);
         while(ros::ok() && !nodeA.picked_object) 
         {
@@ -745,7 +790,6 @@ int main(int argc, char** argv)
         }   
         nodeA.picked_object = false;
         nodeA.navigateToPlacingPose();
-        nodeA.activated = true;
         ros::spinOnce(); // Process callbacks
         ros::Duration(1.0).sleep();
         nodeA.Placing(i);
