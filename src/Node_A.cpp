@@ -826,8 +826,6 @@ public:
         reach(move_group, planning_scene, plan, placing_pose);
         detach(id);
         openGripper();
-
-
         std::vector<std::string> names = planning_scene.getKnownObjectNames();
         planning_scene.removeCollisionObjects(names);
         // clear scene to not move it with the robot
@@ -839,6 +837,10 @@ public:
         } else {
             ROS_WARN("Some collision objects could not be removed.");
         }
+        initial_config(move_group, planning_scene, plan);
+        // moves to the picking position
+        
+
     }
 
 private:
