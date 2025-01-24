@@ -251,8 +251,6 @@ public:
         goal.target_pose.pose.orientation.w = 0.7071; // cos(π/4)
 		
 		routineB.push_back(goal);
-
-
     }
 
     void initializeDetection() {
@@ -311,9 +309,9 @@ public:
 
     }
 
-      void moveHead(std::vector<std::pair<double, double>> positions) {
+    void moveHead(std::vector<std::pair<double, double>> position) {
         // Define pan and tilt points
-        for (const auto& pos : positions) {
+        for (const auto& pos : position) {
             // Create a FollowJointTrajectoryGoal message
             control_msgs::FollowJointTrajectoryGoal goal;
             goal.trajectory.joint_names = {"head_1_joint", "head_2_joint"};
@@ -427,6 +425,32 @@ public:
 			ROS_WARN("The robot failed to reach the Placing Pose.");
     }
     
+    // PICKING POSE NAVIGATION method
+    // __________________________________________________
+    // method to navigate Tiago to the picking pose to be
+    // able to do the picking task
+    void navigateBackToPickingPose()
+    {
+		for (size_t i = 3; i < routineB.size(); ++i) {
+
+            routineB[i].target_pose.header.stamp = ros::Time::now() + ros::Duration(0.1);
+			// Navigation to the Picking Pose
+			ROS_INFO("[Navigation] x = %f, y = %f", routineB[i].target_pose.pose.position.x, routineB[i].target_pose.pose.position.y);
+
+			// Send the goal to move_base
+			move_base_client_.sendGoal(routineB[i]);
+			// wait for the result
+			move_base_client_.waitForResult();
+            // wait for stable routine
+            ros::Duration(0.5).sleep();
+		}
+		
+		if (move_base_client_.getState() == actionlib::SimpleClientGoalState::SUCCEEDED)
+			ROS_INFO("The robot reached the Picking Pose successfully.");
+		else
+			ROS_WARN("The robot failed to reach the Picking Pose.");
+    }
+
     void liftTorso() {
         // Define the goal for lifting the torso
         control_msgs::FollowJointTrajectoryGoal goal;
@@ -455,148 +479,149 @@ public:
     void initial_config(moveit::planning_interface::MoveGroupInterface& move_group,
                     moveit::planning_interface::PlanningSceneInterface& planning_scene,
                     moveit::planning_interface::MoveGroupInterface::Plan& plan) {
-    // Start an AsyncSpinner to handle callbacks
-    ros::AsyncSpinner spinner(1); // Use 1 thread
-    spinner.start();
+        // Start an AsyncSpinner to handle callbacks
+        ros::AsyncSpinner spinner(1); // Use 1 thread
+        spinner.start();
 
-    // Set initial configuration for Tiago's arm
-    std::map<std::string, double> initial_joint_positions;
-    initial_joint_positions["arm_1_joint"] = 0.070;   // Base joint
-    initial_joint_positions["arm_2_joint"] = 0.858;  // Shoulder joint
-    initial_joint_positions["arm_3_joint"] = -0.113; // Elbow joint
-    initial_joint_positions["arm_4_joint"] = 0.766;  // Forearm
-    initial_joint_positions["arm_5_joint"] = -1.570; // Wrist pitch
-    initial_joint_positions["arm_6_joint"] = 1.370;  // Wrist yaw
-    initial_joint_positions["arm_7_joint"] = 0.0;    // End-effector roll
+        // Set initial configuration for Tiago's arm
+        std::map<std::string, double> initial_joint_positions;
+        initial_joint_positions["arm_1_joint"] = 0.070;   // Base joint
+        initial_joint_positions["arm_2_joint"] = 0.858;  // Shoulder joint
+        initial_joint_positions["arm_3_joint"] = -0.113; // Elbow joint
+        initial_joint_positions["arm_4_joint"] = 0.766;  // Forearm
+        initial_joint_positions["arm_5_joint"] = -1.570; // Wrist pitch
+        initial_joint_positions["arm_6_joint"] = 1.370;  // Wrist yaw
+        initial_joint_positions["arm_7_joint"] = 0.0;    // End-effector roll
 
-    if (!move_group.setJointValueTarget(initial_joint_positions)) {
-        ROS_ERROR("Invalid or unreachable initial joint configuration.");
-        return;
-    }
-
-    move_group.setPlanningTime(10.0); // Increase to 10 seconds or more
-    ROS_INFO("Setting initial configuration for Tiago's arm...");
-
-    ros::Time start_time = ros::Time::now();
-    ros::Duration timeout(10.0); // 10 seconds timeout
-    bool success = false;
-
-    while (ros::ok() && !success) {
-        success = (move_group.plan(plan) == moveit::planning_interface::MoveItErrorCode::SUCCESS);
-
-        if (ros::Time::now() - start_time > timeout) {
-            ROS_WARN("Motion planning timed out after 10 seconds.");
-            break;
+        if (!move_group.setJointValueTarget(initial_joint_positions)) {
+            ROS_ERROR("Invalid or unreachable initial joint configuration.");
+            return;
         }
 
-        ROS_INFO("Waiting for the initial config...");
-        ros::Duration(0.1).sleep(); // Sleep for 100ms
+        move_group.setPlanningTime(10.0); // Increase to 10 seconds or more
+        ROS_INFO("Setting initial configuration for Tiago's arm...");
+
+        ros::Time start_time = ros::Time::now();
+        ros::Duration timeout(10.0); // 10 seconds timeout
+        bool success = false;
+
+        while (ros::ok() && !success) {
+            success = (move_group.plan(plan) == moveit::planning_interface::MoveItErrorCode::SUCCESS);
+
+            if (ros::Time::now() - start_time > timeout) {
+                ROS_WARN("Motion planning timed out after 10 seconds.");
+                break;
+            }
+
+            ROS_INFO("Waiting for the initial config...");
+            ros::Duration(0.1).sleep(); // Sleep for 100ms
+        }
+
+        if (!success) {
+            ROS_ERROR("Failed to plan motion to initial configuration.");
+            return;
+        }
+
+        success = (move_group.execute(plan) == moveit::planning_interface::MoveItErrorCode::SUCCESS);
+        if (!success) {
+            ROS_ERROR("Failed to execute motion to initial configuration.");
+            return;
+        }
+
+        ROS_INFO("Initial configuration set successfully.");
+
+        // Stop the spinner after finishing
+        spinner.stop();
     }
-
-    if (!success) {
-        ROS_ERROR("Failed to plan motion to initial configuration.");
-        return;
-    }
-
-    success = (move_group.execute(plan) == moveit::planning_interface::MoveItErrorCode::SUCCESS);
-    if (!success) {
-        ROS_ERROR("Failed to execute motion to initial configuration.");
-        return;
-    }
-
-    ROS_INFO("Initial configuration set successfully.");
-
-    // Stop the spinner after finishing
-    spinner.stop();
-}
-//  -------------- APPROACH ----------------------
+    
+    //  -------------- APPROACH ----------------------
     void approach(moveit::planning_interface::MoveGroupInterface& move_group,
               moveit::planning_interface::PlanningSceneInterface& planning_scene,
               moveit::planning_interface::MoveGroupInterface::Plan& plan,
               geometry_msgs::Pose& pose) {
-    // Start an AsyncSpinner to handle callbacks
-    ros::AsyncSpinner spinner(1); // Use 1 thread
-    spinner.start();
+        // Start an AsyncSpinner to handle callbacks
+        ros::AsyncSpinner spinner(1); // Use 1 thread
+        spinner.start();
 
-    ROS_INFO("Start approach");
+        ROS_INFO("Start approach");
 
-    // Adjust the target pose to be 25 cm above the marker
-    pose.position.z += 0.25;
+        // Adjust the target pose to be 25 cm above the marker
+        pose.position.z += 0.25;
 
-    // Step 1: Extract the current orientation from the pose
-    tf2::Quaternion current_orientation(
-        pose.orientation.x,
-        pose.orientation.y,
-        pose.orientation.z,
-        pose.orientation.w);
+        // Step 1: Extract the current orientation from the pose
+        tf2::Quaternion current_orientation(
+            pose.orientation.x,
+            pose.orientation.y,
+            pose.orientation.z,
+            pose.orientation.w);
 
-    // Step 2: Define the rotation about the x-axis (180°)
-    tf2::Quaternion rotation_about_x;
-    rotation_about_x.setRPY(M_PI, 0, 0); // Roll = 180°, Pitch = 0°, Yaw = 0°
+        // Step 2: Define the rotation about the x-axis (180°)
+        tf2::Quaternion rotation_about_x;
+        rotation_about_x.setRPY(M_PI, 0, 0); // Roll = 180°, Pitch = 0°, Yaw = 0°
 
-    // Step 3: Combine the current orientation with the rotation
-    tf2::Quaternion combined_orientation = current_orientation * rotation_about_x;
-    combined_orientation.normalize(); // Ensure the quaternion is normalized
+        // Step 3: Combine the current orientation with the rotation
+        tf2::Quaternion combined_orientation = current_orientation * rotation_about_x;
+        combined_orientation.normalize(); // Ensure the quaternion is normalized
 
-    // Step 4: Assign the combined orientation back to the target pose
-    pose.orientation.x = combined_orientation.x();
-    pose.orientation.y = combined_orientation.y();
-    pose.orientation.z = combined_orientation.z();
-    pose.orientation.w = combined_orientation.w();
+        // Step 4: Assign the combined orientation back to the target pose
+        pose.orientation.x = combined_orientation.x();
+        pose.orientation.y = combined_orientation.y();
+        pose.orientation.z = combined_orientation.z();
+        pose.orientation.w = combined_orientation.w();
 
-    // Publish the transform for visualization
-    geometry_msgs::TransformStamped transform_stamped;
-    transform_stamped.header.stamp = ros::Time::now();
-    transform_stamped.header.frame_id = "base_footprint"; // Parent frame
-    transform_stamped.child_frame_id = "placing_pose";    // Frame name for visualization
-    transform_stamped.transform.translation.x = pose.position.x;
-    transform_stamped.transform.translation.y = pose.position.y;
-    transform_stamped.transform.translation.z = pose.position.z;
-    transform_stamped.transform.rotation = pose.orientation;
+        // Publish the transform for visualization
+        geometry_msgs::TransformStamped transform_stamped;
+        transform_stamped.header.stamp = ros::Time::now();
+        transform_stamped.header.frame_id = "base_footprint"; // Parent frame
+        transform_stamped.child_frame_id = "placing_pose";    // Frame name for visualization
+        transform_stamped.transform.translation.x = pose.position.x;
+        transform_stamped.transform.translation.y = pose.position.y;
+        transform_stamped.transform.translation.z = pose.position.z;
+        transform_stamped.transform.rotation = pose.orientation;
 
-    tf_broadcaster_.sendTransform(transform_stamped);
+        tf_broadcaster_.sendTransform(transform_stamped);
 
-    // Set the pose target
-    bool is_within_bounds = move_group.setPoseTarget(pose);
-    if (!is_within_bounds) {
-        ROS_ERROR("Target pose is outside the robot's workspace.");
-        return;
-    }
-
-    // Attempt to plan the motion
-    ros::Time start_time = ros::Time::now();
-    ros::Duration timeout(10.0); // 10 seconds timeout
-    bool success = false;
-
-    while (ros::ok() && !success) {
-        success = (move_group.plan(plan) == moveit::planning_interface::MoveItErrorCode::SUCCESS);
-
-        if (ros::Time::now() - start_time > timeout) {
-            ROS_WARN("Motion planning timed out after 10 seconds.");
-            break;
+        // Set the pose target
+        bool is_within_bounds = move_group.setPoseTarget(pose);
+        if (!is_within_bounds) {
+            ROS_ERROR("Target pose is outside the robot's workspace.");
+            return;
         }
 
-        ROS_INFO("Waiting for the approach...");
-        ros::Duration(0.1).sleep(); // Sleep for 100ms to avoid busy looping
+        // Attempt to plan the motion
+        ros::Time start_time = ros::Time::now();
+        ros::Duration timeout(10.0); // 10 seconds timeout
+        bool success = false;
+
+        while (ros::ok() && !success) {
+            success = (move_group.plan(plan) == moveit::planning_interface::MoveItErrorCode::SUCCESS);
+
+            if (ros::Time::now() - start_time > timeout) {
+                ROS_WARN("Motion planning timed out after 10 seconds.");
+                break;
+            }
+
+            ROS_INFO("Waiting for the approach...");
+            ros::Duration(0.1).sleep(); // Sleep for 100ms to avoid busy looping
+        }
+
+        if (!success) {
+            ROS_ERROR("Failed to plan motion to target position.");
+            return;
+        }
+
+        // Execute the planned motion
+        success = (move_group.execute(plan) == moveit::planning_interface::MoveItErrorCode::SUCCESS);
+        if (!success) {
+            ROS_ERROR("Failed to execute motion to target position.");
+            return;
+        }
+
+        ROS_INFO("Motion to target position completed.");
+
+        // Stop the spinner after finishing
+        spinner.stop();
     }
-
-    if (!success) {
-        ROS_ERROR("Failed to plan motion to target position.");
-        return;
-    }
-
-    // Execute the planned motion
-    success = (move_group.execute(plan) == moveit::planning_interface::MoveItErrorCode::SUCCESS);
-    if (!success) {
-        ROS_ERROR("Failed to execute motion to target position.");
-        return;
-    }
-
-    ROS_INFO("Motion to target position completed.");
-
-    // Stop the spinner after finishing
-    spinner.stop();
-}
 
    
 
@@ -658,48 +683,42 @@ public:
            moveit::planning_interface::PlanningSceneInterface& planning_scene,
            moveit::planning_interface::MoveGroupInterface::Plan& plan,
            geometry_msgs::Pose& pose) {
-    // Start an AsyncSpinner to handle callbacks
-    ros::AsyncSpinner spinner(1); // Use 1 thread
-    spinner.start();
+        // Start an AsyncSpinner to handle callbacks
+        ros::AsyncSpinner spinner(1); // Use 1 thread
+        spinner.start();
 
-    // Perform linear movement to grasp the object
-    geometry_msgs::Pose target_pose = pose;
+        // Perform linear movement to grasp the object
+        geometry_msgs::Pose target_pose = pose;
 
-    // Add 0.20m offset along the z-axis for approaching the object
-    target_pose.position.z -= 0.20;
+        // Add 0.20m offset along the z-axis for approaching the object
+        target_pose.position.z -= 0.20;
 
-    ROS_INFO("Planning Cartesian path to touch the object...");
-    std::vector<geometry_msgs::Pose> waypoints;
-    waypoints.push_back(pose);        // Starting position
-    waypoints.push_back(target_pose); // Target position
+        ROS_INFO("Planning Cartesian path to touch the object...");
+        std::vector<geometry_msgs::Pose> waypoints;
+        waypoints.push_back(pose);        // Starting position
+        waypoints.push_back(target_pose); // Target position
 
-    moveit_msgs::RobotTrajectory trajectory;
-    const double eef_step = 0.01; // Step size for the end-effector
-    double fraction = move_group.computeCartesianPath(waypoints, eef_step, trajectory);
+        moveit_msgs::RobotTrajectory trajectory;
+        const double eef_step = 0.01; // Step size for the end-effector
+        double fraction = move_group.computeCartesianPath(waypoints, eef_step, trajectory);
 
-    ROS_INFO("Cartesian path planning reached %.2f%% of its trajectory", fraction * 100);
+        ROS_INFO("Cartesian path planning reached %.2f%% of its trajectory", fraction * 100);
 
-    if (fraction < 0.9) { // Ensure at least 90% of the trajectory is achievable
-        ROS_ERROR("Failed to compute a valid Cartesian path. Only %.2f%% of the path is valid.", fraction * 100);
+        // Execute the trajectory
+        moveit::planning_interface::MoveGroupInterface::Plan cartesian_plan;
+        cartesian_plan.trajectory_ = trajectory;
+
+        ROS_INFO("Executing Cartesian path...");
+        bool success = (move_group.execute(cartesian_plan) == moveit::planning_interface::MoveItErrorCode::SUCCESS);
+        if (!success) {
+            ROS_ERROR("Failed to execute Cartesian path.");
+        } else {
+            ROS_INFO("Successfully executed Cartesian path.");
+        }
+
+        // Stop the spinner after the function is complete
         spinner.stop();
-        return;
     }
-
-    // Execute the trajectory
-    moveit::planning_interface::MoveGroupInterface::Plan cartesian_plan;
-    cartesian_plan.trajectory_ = trajectory;
-
-    ROS_INFO("Executing Cartesian path...");
-    bool success = (move_group.execute(cartesian_plan) == moveit::planning_interface::MoveItErrorCode::SUCCESS);
-    if (!success) {
-        ROS_ERROR("Failed to execute Cartesian path.");
-    } else {
-        ROS_INFO("Successfully executed Cartesian path.");
-    }
-
-    // Stop the spinner after the function is complete
-    spinner.stop();
-}
 
 
     void detach(int32_t id) {
@@ -744,8 +763,8 @@ public:
         srv.request.model_name_2 = name; // Object to be attached
         srv.request.link_name_1 = "arm_7_link";  // Link name of the gripper
         srv.request.link_name_2 = link_name;   // Link name of the object
-
-
+        ROS_INFO("Model name to detach: %s",srv.request.model_name_2.c_str());
+        ROS_INFO("Link name to detach: %s",srv.request.link_name_2.c_str());
         if (attach_client.call(srv)) {
             ROS_INFO("Successfully detached object to the gripper.");
             return;
@@ -779,17 +798,89 @@ public:
         }
     }
     
+    void depart(moveit::planning_interface::MoveGroupInterface& move_group,
+                        moveit::planning_interface::PlanningSceneInterface& planning_scene,
+                        moveit::planning_interface::MoveGroupInterface::Plan& plan,
+                        geometry_msgs::Pose& pose ){
+
+        // Start an AsyncSpinner to handle callbacks
+        ros::AsyncSpinner spinner(1); // Use 1 thread
+        spinner.start();                
+        // Perform linear movement to grasp the object
+        geometry_msgs::Pose target_pose = pose;
+
+        // Add 0.25m offset along the z-axis
+        target_pose.position.z += 0.20;
+
+        ROS_INFO("Planning Cartesian path to depart ...");
+        std::vector<geometry_msgs::Pose> waypoints;
+        waypoints.push_back(pose);
+        waypoints.push_back(target_pose);
+
+        moveit_msgs::RobotTrajectory trajectory;
+        const double eef_step = 0.01; // Step size for end-effector
+        double fraction = move_group.computeCartesianPath(waypoints, eef_step, trajectory);
+
+        ROS_INFO("Cartesian path planning reached %.2f%% of its trajectory", fraction * 100);
+
+        // Execute the trajectory
+        moveit::planning_interface::MoveGroupInterface::Plan cartesian_plan;
+        cartesian_plan.trajectory_ = trajectory;
+
+        ROS_INFO("Executing Cartesian path...");
+        bool success = (move_group.execute(cartesian_plan) == moveit::planning_interface::MoveItErrorCode::SUCCESS);
+        if (!success) {
+            ROS_ERROR("Failed to execute Cartesian path.");
+            return;
+        }
+        // Stop the spinner after finishing
+        spinner.stop();
+    }
+
+    void tuck_arm(moveit::planning_interface::MoveGroupInterface& move_group,
+                        moveit::planning_interface::PlanningSceneInterface& planning_scene,
+                        moveit::planning_interface::MoveGroupInterface::Plan& plan){
+        // Start an AsyncSpinner to handle callbacks
+        ros::AsyncSpinner spinner(1); // Use 1 thread
+        spinner.start();  
+        // Set initial configuration for Tiago's arm
+        std::map<std::string, double> initial_joint_positions;
+        initial_joint_positions["arm_1_joint"] = 0.200;   // Base joint
+        initial_joint_positions["arm_2_joint"] = -1.339; // Shoulder joint
+        initial_joint_positions["arm_3_joint"] = -0.200;   // Elbow joint
+        initial_joint_positions["arm_4_joint"] = 1.938; // Forearm
+        initial_joint_positions["arm_5_joint"] = -1.570;   // Wrist pitch
+        initial_joint_positions["arm_6_joint"] = 0.370;  // Wrist yaw
+        initial_joint_positions["arm_7_joint"] = 0.0;   // End-effector roll
+        move_group.setJointValueTarget(initial_joint_positions);  
+        move_group.setPlanningTime(10.0); // Increase to 10 seconds or more
+        ROS_INFO("Setting initial configuration for Tiago's arm...");
+        bool success = (move_group.plan(plan) == moveit::planning_interface::MoveItErrorCode::SUCCESS);
+        if (!success) {
+            ROS_ERROR("Failed to plan motion to initial configuration.");
+            return;
+        }
+        success = (move_group.execute(plan) == moveit::planning_interface::MoveItErrorCode::SUCCESS);
+        if (!success) {
+            ROS_ERROR("Failed to execute motion to initial configuration.");
+            return;
+        }
+        ROS_INFO("Initial configuration set successfully.");
+        // Stop the spinner after finishing
+        spinner.stop();
+    }
+
     void Placing(int i)
     {
         // Initialize MoveIt interfaces
         moveit::planning_interface::PlanningSceneInterface planning_scene;
         CollisionTable(planning_scene);
-         std::vector<std::pair<double, double>> positions = {
+         std::vector<std::pair<double, double>> position = {
             {+M_PI / 7.2, -M_PI / 4.0},  // Look left 25 degrees (maintaining down)
         };
-        moveHead(positions); 
+        moveHead(position); 
         ros::Duration(1.0).sleep();
-        positions.clear();
+        position.clear();
         // Subscriber to the AprilTag detection topic (messages rate: 20 Hz)
         object_detection_sub = nh_.subscribe("/tag_detections", 10, &NodeA::AprilTagDetectionCallback, this);
         ros::spinOnce();
@@ -806,37 +897,37 @@ public:
             ros::Duration(0.1).sleep(); // Sleep for 100ms to avoid busy looping
         }
         ROS_INFO("Terminated Detection");
-        positions = {
+        activated = false; // reset for next iteration
+        position = {
             {0.0, -M_PI / 4.0}           // Return to initial position
         };
-        moveHead(positions); 
-        positions.clear();
+        moveHead(position); 
+        position.clear();
         moveit::planning_interface::MoveGroupInterface move_group("arm");
-        // Change the end effector frame to perform the picking operation
+        // change the end effector frame to perform the picking operation
         move_group.setEndEffectorLink("gripper_base_link");
         moveit::planning_interface::MoveGroupInterface::Plan plan;
         initial_config(move_group, planning_scene, plan);
         // Create the pose to place the object based on the line equation
         geometry_msgs::Pose placing_pose = computePlacingPose(i);  
         approach(move_group, planning_scene, plan, placing_pose);
+        ros::Duration(1.0).sleep();
         reach(move_group, planning_scene, plan, placing_pose);
-        detach(id);
         openGripper();
+        detach(id);
+        depart(move_group, planning_scene, plan, placing_pose);
+        initial_config(move_group, planning_scene, plan);
+        tuck_arm(move_group, planning_scene, plan);
         std::vector<std::string> names = planning_scene.getKnownObjectNames();
         planning_scene.removeCollisionObjects(names);
         // clear scene to not move it with the robot
-        collision_objects.clear();
-            
+        collision_objects.clear();  
         // Check if the planning scene is now clear
         if (planning_scene.getKnownObjectNames().empty()) {
             ROS_INFO("Successfully cleared the planning scene.");
         } else {
             ROS_WARN("Some collision objects could not be removed.");
         }
-        initial_config(move_group, planning_scene, plan);
-        // moves to the picking position
-        
-
     }
 
 private:
@@ -861,10 +952,10 @@ private:
     std::vector<moveit_msgs::CollisionObject> collision_objects; // vector containing all collision objects detected
 	bool id; // id of the picked object
     ros::ServiceClient attach_client;
-                    tf2_ros::Buffer tf_buffer; 
+    tf2_ros::Buffer tf_buffer; 
 
     TrajectoryClient gripper_client;
-    std::vector<double> x_coordinates = {0.02,0.1,0.15};
+    std::vector<double> x_coordinates = {0.0,0.05,0.1};
 
 
 
@@ -894,16 +985,12 @@ int main(int argc, char** argv)
             ros::spinOnce(); // Process callbacks
             rate.sleep();
         }   
-        nodeA.picked_object = false;
+        nodeA.picked_object = false; // reset for next iteration 
         nodeA.navigateToPlacingPose();
-        ros::spinOnce(); // Process callbacks
+        //ros::spinOnce(); // Process callbacks
         ros::Duration(1.0).sleep();
-        
-
         nodeA.Placing(i);
-        
-
-
+        nodeA.navigateBackToPickingPose();
     }
     // send goal to Node_B to detect a pickable object and pick it
     // send goal to Node_C to pick that object and 

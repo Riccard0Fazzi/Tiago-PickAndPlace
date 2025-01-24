@@ -257,7 +257,7 @@ class NodeB
         // to Node_C to pick it!
         void initialize_picking()
         {
-            object_detection_sub.shutdown();
+            //object_detection_sub.shutdown();
             // choose pickable object among the objects detected
             int id;
             for(const auto& object : collision_objects)
