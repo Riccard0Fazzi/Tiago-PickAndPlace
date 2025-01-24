@@ -554,9 +554,7 @@ public:
     transform_stamped.transform.translation.z = pose.position.z;
     transform_stamped.transform.rotation = pose.orientation;
 
-    ROS_INFO("Before sending the transform");
     tf_broadcaster_.sendTransform(transform_stamped);
-    ROS_INFO("After sending the transform");
 
     // Set the pose target
     bool is_within_bounds = move_group.setPoseTarget(pose);
@@ -564,8 +562,6 @@ public:
         ROS_ERROR("Target pose is outside the robot's workspace.");
         return;
     }
-
-    ROS_INFO("Before Loop for MoveIt");
 
     // Attempt to plan the motion
     ros::Time start_time = ros::Time::now();
@@ -868,7 +864,7 @@ private:
                     tf2_ros::Buffer tf_buffer; 
 
     TrajectoryClient gripper_client;
-    std::vector<double> x_coordinates = {0.05,0.10,0.15};
+    std::vector<double> x_coordinates = {0.02,0.1,0.15};
 
 
 
