@@ -99,13 +99,13 @@ public:
         // callBack always running, saving detected poses only when required
         for(const auto& detection : msg->detections)
         {
-            int id = detection.id[0];
-            if(id==10 && line_origin.header.frame_id.empty())
+            int id_tag = detection.id[0];
+            if(id_tag==10 && line_origin.header.frame_id.empty())
             {
-                ROS_INFO("Detected object ID: %d",id);
+                ROS_INFO("Detected object ID: %d",id_tag);
                 // get the pose of the object
                 geometry_msgs::PoseStamped frame;
-                frame.header.seq = static_cast<uint32_t>(id); // saving ID
+                frame.header.seq = static_cast<uint32_t>(id_tag); // saving ID
                 //frame.header.stamp = detection.pose.header.stamp;       // Use detection timestamp
                 frame.header.frame_id = detection.pose.header.frame_id; // Get frame_id from the detection
                 frame.pose.position = detection.pose.pose.pose.position; // saving position
@@ -431,8 +431,8 @@ public:
     // able to do the picking task
     void navigateBackToPickingPose()
     {
-		for (size_t i = 3; i < routineB.size(); ++i) {
-
+		for (size_t i = 3; i < routineB.size(); i++) {
+            ROS_INFO("Iteration number: %ld, to go back to the picking pose",i);
             routineB[i].target_pose.header.stamp = ros::Time::now() + ros::Duration(0.1);
 			// Navigation to the Picking Pose
 			ROS_INFO("[Navigation] x = %f, y = %f", routineB[i].target_pose.pose.position.x, routineB[i].target_pose.pose.position.y);
@@ -479,7 +479,7 @@ public:
     void initial_config(moveit::planning_interface::MoveGroupInterface& move_group,
                     moveit::planning_interface::PlanningSceneInterface& planning_scene,
                     moveit::planning_interface::MoveGroupInterface::Plan& plan) {
-        // Start an AsyncSpinner to handle callbacks
+       // Start an AsyncSpinner to handle callbacks
         ros::AsyncSpinner spinner(1); // Use 1 thread
         spinner.start();
 
@@ -512,17 +512,28 @@ public:
                 ROS_WARN("Motion planning timed out after 10 seconds.");
                 break;
             }
-
             ROS_INFO("Waiting for the initial config...");
             ros::Duration(0.1).sleep(); // Sleep for 100ms
         }
+
 
         if (!success) {
             ROS_ERROR("Failed to plan motion to initial configuration.");
             return;
         }
 
-        success = (move_group.execute(plan) == moveit::planning_interface::MoveItErrorCode::SUCCESS);
+        success = false;
+        start_time = ros::Time::now();
+
+        while (ros::ok() && !success) {
+            success = (move_group.execute(plan) == moveit::planning_interface::MoveItErrorCode::SUCCESS);
+            if (ros::Time::now() - start_time > timeout) {
+                ROS_WARN("Motion execution timed out after 10 seconds.");
+                break;
+            }
+            ros::Duration(0.1).sleep(); // Sleep for 100ms
+        }
+
         if (!success) {
             ROS_ERROR("Failed to execute motion to initial configuration.");
             return;
@@ -609,9 +620,18 @@ public:
             ROS_ERROR("Failed to plan motion to target position.");
             return;
         }
+        
+        success = false;
 
-        // Execute the planned motion
-        success = (move_group.execute(plan) == moveit::planning_interface::MoveItErrorCode::SUCCESS);
+        start_time = ros::Time::now();
+        while (ros::ok() && !success) {
+            success = (move_group.execute(plan) == moveit::planning_interface::MoveItErrorCode::SUCCESS);
+            if (ros::Time::now() - start_time > timeout) {
+                ROS_WARN("Motion execution timed out after 10 seconds.");
+                break;
+            }
+            ros::Duration(0.1).sleep(); // Sleep for 100ms
+        }
         if (!success) {
             ROS_ERROR("Failed to execute motion to target position.");
             return;
@@ -708,7 +728,19 @@ public:
         cartesian_plan.trajectory_ = trajectory;
 
         ROS_INFO("Executing Cartesian path...");
-        bool success = (move_group.execute(cartesian_plan) == moveit::planning_interface::MoveItErrorCode::SUCCESS);
+          // Attempt to plan the motion
+        ros::Time start_time = ros::Time::now();
+        ros::Duration timeout(10.0); // 10 seconds timeout
+        bool success = false;
+
+        while (ros::ok() && !success) {
+            success = (move_group.execute(cartesian_plan) == moveit::planning_interface::MoveItErrorCode::SUCCESS);
+            if (ros::Time::now() - start_time > timeout) {
+                ROS_WARN("Motion execution timed out after 10 seconds.");
+                break;
+            }
+            ros::Duration(0.1).sleep(); // Sleep for 100ms
+        }
         if (!success) {
             ROS_ERROR("Failed to execute Cartesian path.");
         } else {
@@ -826,10 +858,22 @@ public:
         cartesian_plan.trajectory_ = trajectory;
 
         ROS_INFO("Executing Cartesian path...");
-        bool success = (move_group.execute(cartesian_plan) == moveit::planning_interface::MoveItErrorCode::SUCCESS);
+        // Attempt to plan the motion
+        ros::Time start_time = ros::Time::now();
+        ros::Duration timeout(10.0); // 10 seconds timeout
+        bool success = false;
+        while (ros::ok() && !success) {
+            success = (move_group.execute(cartesian_plan) == moveit::planning_interface::MoveItErrorCode::SUCCESS);
+            if (ros::Time::now() - start_time > timeout) {
+                ROS_WARN("Motion execution timed out after 10 seconds.");
+                break;
+            }
+            ros::Duration(0.1).sleep(); // Sleep for 100ms
+        }
         if (!success) {
             ROS_ERROR("Failed to execute Cartesian path.");
-            return;
+        } else {
+            ROS_INFO("Successfully executed Cartesian path.");
         }
         // Stop the spinner after finishing
         spinner.stop();
@@ -853,20 +897,44 @@ public:
         move_group.setJointValueTarget(initial_joint_positions);  
         move_group.setPlanningTime(10.0); // Increase to 10 seconds or more
         ROS_INFO("Setting initial configuration for Tiago's arm...");
-        bool success = (move_group.plan(plan) == moveit::planning_interface::MoveItErrorCode::SUCCESS);
+
+        // Attempt to plan the motion
+        ros::Time start_time = ros::Time::now();
+        ros::Duration timeout(10.0); // 10 seconds timeout
+        bool success = false;   
+
+        while (ros::ok() && !success) {
+            bool success = (move_group.plan(plan) == moveit::planning_interface::MoveItErrorCode::SUCCESS);
+            if (ros::Time::now() - start_time > timeout) {
+                ROS_WARN("Motion execution timed out after 10 seconds.");
+                break;
+            }
+            ros::Duration(0.1).sleep(); // Sleep for 100ms
+        }
         if (!success) {
             ROS_ERROR("Failed to plan motion to initial configuration.");
             return;
         }
-        success = (move_group.execute(plan) == moveit::planning_interface::MoveItErrorCode::SUCCESS);
+        start_time = ros::Time::now();
+        success = false;
+        ROS_INFO("Execution of tuck arm");
+        while (ros::ok() && !success) {
+            success = (move_group.execute(plan) == moveit::planning_interface::MoveItErrorCode::SUCCESS);
+            if (ros::Time::now() - start_time > timeout) {
+                ROS_WARN("Motion execution timed out after 10 seconds.");
+                break;
+            }
+            ros::Duration(0.1).sleep(); // Sleep for 100ms
+        }
         if (!success) {
-            ROS_ERROR("Failed to execute motion to initial configuration.");
+            ROS_ERROR("Failed to execute motion to tuck arm.");
             return;
         }
         ROS_INFO("Tuck Arm configuration set successfully.");
         // Stop the spinner after finishing
         spinner.stop();
     }
+
 
     void Placing(int i)
     {
@@ -882,7 +950,7 @@ public:
         // Subscriber to the AprilTag detection topic (messages rate: 20 Hz)
         object_detection_sub = nh_.subscribe("/tag_detections", 10, &NodeA::AprilTagDetectionCallback, this);
         ros::spinOnce();
-        ros::Duration(0.5).sleep();
+        ros::Duration(1.0).sleep();
 
         // here the head is pointing in the left low corner of the table to detect the apriltag
             // Main loop
@@ -916,10 +984,23 @@ public:
         depart(move_group, planning_scene, plan, placing_pose);
         initial_config(move_group, planning_scene, plan);
         tuck_arm(move_group, planning_scene, plan);
-        // clear scene to not move it with the robot
-        collision_objects.clear();  
+
+        ROS_INFO("Tuck arm configuration completed.");
+        
+        // Shutdown subscriber to avoid future callbacks
         object_detection_sub.shutdown();
-        ros::spinOnce();
+        ROS_INFO("Object detection subscriber shut down.");
+        
+        // Clear collision objects safely
+        if (!collision_objects.empty()) {
+            collision_objects.clear();
+            ROS_INFO("Collision objects cleared.");
+        } else {
+            ROS_WARN("Collision objects already empty.");
+        }
+        //object_detection_sub.shutdown();
+        //ROS_INFO("Shutdown the object detection sub");
+        //ros::spinOnce();
     }
 
 private:
@@ -970,6 +1051,7 @@ int main(int argc, char** argv)
     // START THE LOOP
     for(size_t i = 0; i < 3; i++)
     {
+        ROS_INFO("Iteration number: %ld, before initializeDetection to check segmentation fault", i);
 	    nodeA.initializeDetection();
         ros::Rate rate(1);
         while(ros::ok() && !nodeA.picked_object) 
@@ -982,6 +1064,7 @@ int main(int argc, char** argv)
         //ros::spinOnce(); // Process callbacks
         ros::Duration(1.0).sleep();
         nodeA.Placing(i);
+        ROS_INFO("Go back to the picking pose!");
         nodeA.navigateBackToPickingPose();
     }
     // send goal to Node_B to detect a pickable object and pick it
