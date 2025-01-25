@@ -46,6 +46,7 @@ public:
           move_base_client_("/move_base", true), // action client to the move_base action server
           head_client("/head_controller/follow_joint_trajectory", true),
           torso_client_("/torso_controller/follow_joint_trajectory", true),
+          tf_listener(tf_buffer),
           attach_client(nh.serviceClient<gazebo_ros_link_attacher::Attach>("/link_attacher_node/detach")),
           gripper_client("/parallel_gripper_controller/follow_joint_trajectory", true)
 
@@ -110,7 +111,6 @@ public:
                 frame.pose.position = detection.pose.pose.pose.position; // saving position
                 frame.pose.orientation = detection.pose.pose.pose.orientation;// saving orientation
                 // Define a transform from the camera frame (or detected frame) to the map frame
-                tf2_ros::TransformListener tf_listener(tf_buffer);
                 ros::Rate rate(100.0);  // Loop frequency in Hz
                 // transform from camera frame to map frame
                 // PUBLISH THE FRAME HERE
@@ -623,7 +623,6 @@ public:
         spinner.stop();
     }
 
-   
 
     // method to add the table as a collision object
     void CollisionTable(moveit::planning_interface::PlanningSceneInterface planning_scene)
@@ -719,7 +718,6 @@ public:
         // Stop the spinner after the function is complete
         spinner.stop();
     }
-
 
     void detach(int32_t id) {
 
@@ -865,7 +863,7 @@ public:
             ROS_ERROR("Failed to execute motion to initial configuration.");
             return;
         }
-        ROS_INFO("Initial configuration set successfully.");
+        ROS_INFO("Tuck Arm configuration set successfully.");
         // Stop the spinner after finishing
         spinner.stop();
     }
@@ -918,16 +916,10 @@ public:
         depart(move_group, planning_scene, plan, placing_pose);
         initial_config(move_group, planning_scene, plan);
         tuck_arm(move_group, planning_scene, plan);
-        std::vector<std::string> names = planning_scene.getKnownObjectNames();
-        planning_scene.removeCollisionObjects(names);
         // clear scene to not move it with the robot
         collision_objects.clear();  
-        // Check if the planning scene is now clear
-        if (planning_scene.getKnownObjectNames().empty()) {
-            ROS_INFO("Successfully cleared the planning scene.");
-        } else {
-            ROS_WARN("Some collision objects could not be removed.");
-        }
+        object_detection_sub.shutdown();
+        ros::spinOnce();
     }
 
 private:
@@ -950,10 +942,10 @@ private:
     geometry_msgs::PoseStamped line_origin;
     tf2_ros::TransformBroadcaster tf_broadcaster_;
     std::vector<moveit_msgs::CollisionObject> collision_objects; // vector containing all collision objects detected
-	bool id; // id of the picked object
+	int id; // id of the picked object
     ros::ServiceClient attach_client;
     tf2_ros::Buffer tf_buffer; 
-
+    tf2_ros::TransformListener tf_listener;
     TrajectoryClient gripper_client;
     std::vector<double> x_coordinates = {0.0,0.05,0.1};
 
