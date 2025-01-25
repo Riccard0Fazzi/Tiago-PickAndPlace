@@ -479,8 +479,8 @@ public:
     void initial_config(moveit::planning_interface::MoveGroupInterface& move_group,
                     moveit::planning_interface::PlanningSceneInterface& planning_scene,
                     moveit::planning_interface::MoveGroupInterface::Plan& plan) {
-       // Start an AsyncSpinner to handle callbacks
-        ros::AsyncSpinner spinner(1); // Use 1 thread
+        // Start an AsyncSpinner to handle callbacks
+        ros::AsyncSpinner spinner(1);
         spinner.start();
 
         // Set initial configuration for Tiago's arm
@@ -498,10 +498,7 @@ public:
             return;
         }
 
-        move_group.setPlanningTime(10.0); // Increase to 10 seconds or more
-        ROS_INFO("Setting initial configuration for Tiago's arm...");
-
-        ros::Time start_time = ros::Time::now();
+        /*
         ros::Duration timeout(10.0); // 10 seconds timeout
         bool success = false;
 
@@ -540,6 +537,25 @@ public:
         }
 
         ROS_INFO("Initial configuration set successfully.");
+        */
+        
+        move_group.setPlanningTime(15.0);
+        move_group.setNumPlanningAttempts(5);
+        ROS_INFO("Setting initial configuration for Tiago's arm...");
+        auto planning_result = move_group.plan(plan);
+        if(planning_result != moveit::planning_interface::MoveItErrorCode::SUCCESS){
+            ROS_ERROR("Motion planning failed!");
+            return;
+        }
+        ROS_INFO("Motion plan successfully generated!");
+
+        ROS_INFO("Executing the motion...");
+        auto execution_result = move_group.execute(plan);
+        if(execution_result != moveit::planning_interface::MoveItErrorCode::SUCCESS){
+            ROS_ERROR("Motion execution failed!");
+            return;
+        }
+        ROS_INFO("Initial configuration successfully reached!");
 
         // Stop the spinner after finishing
         spinner.stop();
@@ -551,7 +567,7 @@ public:
               moveit::planning_interface::MoveGroupInterface::Plan& plan,
               geometry_msgs::Pose& pose) {
         // Start an AsyncSpinner to handle callbacks
-        ros::AsyncSpinner spinner(1); // Use 1 thread
+        ros::AsyncSpinner spinner(1);
         spinner.start();
 
         ROS_INFO("Start approach");
@@ -599,41 +615,20 @@ public:
             return;
         }
 
-        // Attempt to plan the motion
-        ros::Time start_time = ros::Time::now();
-        ros::Duration timeout(10.0); // 10 seconds timeout
-        bool success = false;
-
-        while (ros::ok() && !success) {
-            success = (move_group.plan(plan) == moveit::planning_interface::MoveItErrorCode::SUCCESS);
-
-            if (ros::Time::now() - start_time > timeout) {
-                ROS_WARN("Motion planning timed out after 10 seconds.");
-                break;
-            }
-
-            ROS_INFO("Waiting for the approach...");
-            ros::Duration(0.1).sleep(); // Sleep for 100ms to avoid busy looping
-        }
-
-        if (!success) {
-            ROS_ERROR("Failed to plan motion to target position.");
+        move_group.setPlanningTime(15.0);
+        move_group.setNumPlanningAttempts(5);
+        ROS_INFO("Setting initial configuration for Tiago's arm...");
+        auto planning_result = move_group.plan(plan);
+        if(planning_result != moveit::planning_interface::MoveItErrorCode::SUCCESS){
+            ROS_ERROR("Motion planning failed!");
             return;
         }
-        
-        success = false;
+        ROS_INFO("Motion plan successfully generated!");
 
-        start_time = ros::Time::now();
-        while (ros::ok() && !success) {
-            success = (move_group.execute(plan) == moveit::planning_interface::MoveItErrorCode::SUCCESS);
-            if (ros::Time::now() - start_time > timeout) {
-                ROS_WARN("Motion execution timed out after 10 seconds.");
-                break;
-            }
-            ros::Duration(0.1).sleep(); // Sleep for 100ms
-        }
-        if (!success) {
-            ROS_ERROR("Failed to execute motion to target position.");
+        ROS_INFO("Executing the motion...");
+        auto execution_result = move_group.execute(plan);
+        if(execution_result != moveit::planning_interface::MoveItErrorCode::SUCCESS){
+            ROS_ERROR("Motion execution failed!");
             return;
         }
 
@@ -703,7 +698,7 @@ public:
            moveit::planning_interface::MoveGroupInterface::Plan& plan,
            geometry_msgs::Pose& pose) {
         // Start an AsyncSpinner to handle callbacks
-        ros::AsyncSpinner spinner(1); // Use 1 thread
+        ros::AsyncSpinner spinner(1);
         spinner.start();
 
         // Perform linear movement to grasp the object
@@ -728,24 +723,12 @@ public:
         cartesian_plan.trajectory_ = trajectory;
 
         ROS_INFO("Executing Cartesian path...");
-          // Attempt to plan the motion
-        ros::Time start_time = ros::Time::now();
-        ros::Duration timeout(10.0); // 10 seconds timeout
-        bool success = false;
-
-        while (ros::ok() && !success) {
-            success = (move_group.execute(cartesian_plan) == moveit::planning_interface::MoveItErrorCode::SUCCESS);
-            if (ros::Time::now() - start_time > timeout) {
-                ROS_WARN("Motion execution timed out after 10 seconds.");
-                break;
-            }
-            ros::Duration(0.1).sleep(); // Sleep for 100ms
+        auto execution_result = move_group.execute(cartesian_plan);
+        if(execution_result != moveit::planning_interface::MoveItErrorCode::SUCCESS){
+            ROS_ERROR("Motion execution failed!");
+            return;
         }
-        if (!success) {
-            ROS_ERROR("Failed to execute Cartesian path.");
-        } else {
-            ROS_INFO("Successfully executed Cartesian path.");
-        }
+        ROS_INFO("Initial configuration successfully reached!");
 
         // Stop the spinner after the function is complete
         spinner.stop();
@@ -834,7 +817,7 @@ public:
                         geometry_msgs::Pose& pose ){
 
         // Start an AsyncSpinner to handle callbacks
-        ros::AsyncSpinner spinner(1); // Use 1 thread
+        ros::AsyncSpinner spinner(1);
         spinner.start();                
         // Perform linear movement to grasp the object
         geometry_msgs::Pose target_pose = pose;
@@ -858,23 +841,12 @@ public:
         cartesian_plan.trajectory_ = trajectory;
 
         ROS_INFO("Executing Cartesian path...");
-        // Attempt to plan the motion
-        ros::Time start_time = ros::Time::now();
-        ros::Duration timeout(10.0); // 10 seconds timeout
-        bool success = false;
-        while (ros::ok() && !success) {
-            success = (move_group.execute(cartesian_plan) == moveit::planning_interface::MoveItErrorCode::SUCCESS);
-            if (ros::Time::now() - start_time > timeout) {
-                ROS_WARN("Motion execution timed out after 10 seconds.");
-                break;
-            }
-            ros::Duration(0.1).sleep(); // Sleep for 100ms
+        auto execution_result = move_group.execute(cartesian_plan);
+        if(execution_result != moveit::planning_interface::MoveItErrorCode::SUCCESS){
+            ROS_ERROR("Motion execution failed!");
+            return;
         }
-        if (!success) {
-            ROS_ERROR("Failed to execute Cartesian path.");
-        } else {
-            ROS_INFO("Successfully executed Cartesian path.");
-        }
+        ROS_INFO("Initial configuration successfully reached!");
         // Stop the spinner after finishing
         spinner.stop();
     }
@@ -883,7 +855,7 @@ public:
                         moveit::planning_interface::PlanningSceneInterface& planning_scene,
                         moveit::planning_interface::MoveGroupInterface::Plan& plan){
         // Start an AsyncSpinner to handle callbacks
-        ros::AsyncSpinner spinner(1); // Use 1 thread
+        ros::AsyncSpinner spinner(1);
         spinner.start();  
         // Set initial configuration for Tiago's arm
         std::map<std::string, double> initial_joint_positions;
@@ -895,39 +867,21 @@ public:
         initial_joint_positions["arm_6_joint"] = 0.370;  // Wrist yaw
         initial_joint_positions["arm_7_joint"] = 0.0;   // End-effector roll
         move_group.setJointValueTarget(initial_joint_positions);  
-        move_group.setPlanningTime(10.0); // Increase to 10 seconds or more
-        ROS_INFO("Setting initial configuration for Tiago's arm...");
 
-        // Attempt to plan the motion
-        ros::Time start_time = ros::Time::now();
-        ros::Duration timeout(10.0); // 10 seconds timeout
-        bool success = false;   
-
-        while (ros::ok() && !success) {
-            bool success = (move_group.plan(plan) == moveit::planning_interface::MoveItErrorCode::SUCCESS);
-            if (ros::Time::now() - start_time > timeout) {
-                ROS_WARN("Motion execution timed out after 10 seconds.");
-                break;
-            }
-            ros::Duration(0.1).sleep(); // Sleep for 100ms
-        }
-        if (!success) {
-            ROS_ERROR("Failed to plan motion to initial configuration.");
+        move_group.setPlanningTime(15.0);
+        move_group.setNumPlanningAttempts(5);
+        ROS_INFO("Setting Tuck arm configuration for Tiago's arm...");
+        auto planning_result = move_group.plan(plan);
+        if(planning_result != moveit::planning_interface::MoveItErrorCode::SUCCESS){
+            ROS_ERROR("Motion planning failed!");
             return;
         }
-        start_time = ros::Time::now();
-        success = false;
-        ROS_INFO("Execution of tuck arm");
-        while (ros::ok() && !success) {
-            success = (move_group.execute(plan) == moveit::planning_interface::MoveItErrorCode::SUCCESS);
-            if (ros::Time::now() - start_time > timeout) {
-                ROS_WARN("Motion execution timed out after 10 seconds.");
-                break;
-            }
-            ros::Duration(0.1).sleep(); // Sleep for 100ms
-        }
-        if (!success) {
-            ROS_ERROR("Failed to execute motion to tuck arm.");
+        ROS_INFO("Motion plan successfully generated!");
+
+        ROS_INFO("Executing the motion...");
+        auto execution_result = move_group.execute(plan);
+        if(execution_result != moveit::planning_interface::MoveItErrorCode::SUCCESS){
+            ROS_ERROR("Motion execution failed!");
             return;
         }
         ROS_INFO("Tuck Arm configuration set successfully.");
