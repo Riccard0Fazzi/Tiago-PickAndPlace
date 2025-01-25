@@ -31,16 +31,24 @@ private:
     ir2425_group_24_a2::manipulationResult result_;
     tf2_ros::TransformBroadcaster tf_broadcaster_;
     TrajectoryClient gripper_client;
+    moveit::planning_interface::MoveGroupInterface move_group;
+    moveit::planning_interface::PlanningSceneInterface planning_scene;
+    moveit::planning_interface::MoveGroupInterface::Plan plan;
 
 public:
     PickingActionServer(const std::string& name) :
         as_(nh_, name, boost::bind(&PickingActionServer::executeCB, this, _1), false),
-        action_name_(name), 
+        action_name_(name),
+        move_group("arm"), 
         gripper_client("/parallel_gripper_controller/follow_joint_trajectory", true) {
             as_.start();
             ROS_INFO("Picking Action Server initialized.");
             ROS_INFO("Waiting for gripper action server...");
             gripper_client.waitForServer();
+            // Change the end effector frame to perform the picking operation
+            move_group.setEndEffectorLink("gripper_base_link");
+            move_group.setPlanningTime(15.0);
+            move_group.setNumPlanningAttempts(5);
     }
 
     // CALLBACK that receives the goal when sent
@@ -63,9 +71,7 @@ public:
 
 private:
 
-    void initial_config(moveit::planning_interface::MoveGroupInterface& move_group,
-                        moveit::planning_interface::PlanningSceneInterface& planning_scene,
-                        moveit::planning_interface::MoveGroupInterface::Plan& plan){
+    void initial_config(){
         // Set initial configuration for Tiago's arm
         std::map<std::string, double> initial_joint_positions;
         initial_joint_positions["arm_1_joint"] = 0.070;   // Base joint
@@ -76,9 +82,8 @@ private:
         initial_joint_positions["arm_6_joint"] = 1.370;  // Wrist yaw
         initial_joint_positions["arm_7_joint"] = 0.0;   // End-effector roll
         move_group.setJointValueTarget(initial_joint_positions);  
-        move_group.setPlanningTime(10.0); // Increase to 10 seconds or more
         ROS_INFO("Setting initial configuration for Tiago's arm...");
-        bool success = (move_group.plan(plan) == moveit::planning_interface::MoveItErrorCode::SUCCESS);
+        auto success = (move_group.plan(plan) == moveit::planning_interface::MoveItErrorCode::SUCCESS);
         if (!success) {
             ROS_ERROR("Failed to plan motion to initial configuration.");
             return;
@@ -91,9 +96,7 @@ private:
         ROS_INFO("Initial configuration set successfully.");
     }
 
-    void tuck_config(moveit::planning_interface::MoveGroupInterface& move_group,
-                        moveit::planning_interface::PlanningSceneInterface& planning_scene,
-                        moveit::planning_interface::MoveGroupInterface::Plan& plan){
+    void tuck_config(){
         // Set initial configuration for Tiago's arm
         std::map<std::string, double> initial_joint_positions;
         initial_joint_positions["arm_1_joint"] = 0.070;   // Base joint
@@ -104,9 +107,8 @@ private:
         initial_joint_positions["arm_6_joint"] = 0.129;  // Wrist yaw
         initial_joint_positions["arm_7_joint"] = 0.0;   // End-effector roll
         move_group.setJointValueTarget(initial_joint_positions);  
-        move_group.setPlanningTime(10.0); // Increase to 10 seconds or more
         ROS_INFO("Setting initial configuration for Tiago's arm...");
-        bool success = (move_group.plan(plan) == moveit::planning_interface::MoveItErrorCode::SUCCESS);
+        auto success = (move_group.plan(plan) == moveit::planning_interface::MoveItErrorCode::SUCCESS);
         if (!success) {
             ROS_ERROR("Failed to plan motion to initial configuration.");
             return;
@@ -120,10 +122,7 @@ private:
     }
 
 
-    void approach(moveit::planning_interface::MoveGroupInterface& move_group,
-                        moveit::planning_interface::PlanningSceneInterface& planning_scene,
-                        moveit::planning_interface::MoveGroupInterface::Plan& plan,
-                        geometry_msgs::Pose& pose ){
+    void approach(geometry_msgs::Pose& pose){
 
         // Set the target pose above the marker (10 cm above)
         // Set the orientation for z-axis pointing downwards
@@ -157,7 +156,7 @@ private:
 
         // Plan and execute the motion to the target pose
         ROS_INFO("Planning motion to target position above the marker...");
-        bool success = (move_group.plan(plan) == moveit::planning_interface::MoveItErrorCode::SUCCESS);
+        auto success = (move_group.plan(plan) == moveit::planning_interface::MoveItErrorCode::SUCCESS);
         if (!success) {
             ROS_ERROR("Failed to plan motion to target position.");
             return;
@@ -170,10 +169,7 @@ private:
         ROS_INFO("Motion to target position completed.");
     }
 
-    void reach(moveit::planning_interface::MoveGroupInterface& move_group,
-                        moveit::planning_interface::PlanningSceneInterface& planning_scene,
-                        moveit::planning_interface::MoveGroupInterface::Plan& plan,
-                        geometry_msgs::Pose& pose ){
+    void reach(geometry_msgs::Pose& pose){
         // Perform linear movement to grasp the object
         geometry_msgs::Pose target_pose = pose;
 
@@ -196,11 +192,12 @@ private:
         cartesian_plan.trajectory_ = trajectory;
 
         ROS_INFO("Executing Cartesian path...");
-        bool success = (move_group.execute(cartesian_plan) == moveit::planning_interface::MoveItErrorCode::SUCCESS);
+        auto success = (move_group.execute(cartesian_plan) == moveit::planning_interface::MoveItErrorCode::SUCCESS);
         if (!success) {
             ROS_ERROR("Failed to execute Cartesian path.");
             return;
         }
+        ROS_INFO("Cartesian path executed...");
     }
 
 
@@ -220,12 +217,13 @@ private:
         ROS_INFO("Sending gripper close trajectory goal...");
         gripper_client.sendGoal(goal);
 
-        bool success = gripper_client.waitForResult(ros::Duration(5.0));
+        auto success = gripper_client.waitForResult(ros::Duration(5.0));
         if (success) {
             ROS_INFO("Gripper closed successfully.");
         } else {
             ROS_ERROR("Failed to close gripper.");
         }
+        ROS_INFO("Object grasped!");
     }
 
     void attach(int32_t id) {
@@ -282,10 +280,7 @@ private:
         }
     }
 
-    void depart(moveit::planning_interface::MoveGroupInterface& move_group,
-                        moveit::planning_interface::PlanningSceneInterface& planning_scene,
-                        moveit::planning_interface::MoveGroupInterface::Plan& plan,
-                        geometry_msgs::Pose& pose ){
+    void depart(geometry_msgs::Pose& pose){
 
         // Perform linear movement to grasp the object
         geometry_msgs::Pose target_pose = pose;
@@ -309,11 +304,12 @@ private:
         cartesian_plan.trajectory_ = trajectory;
 
         ROS_INFO("Executing Cartesian path...");
-        bool success = (move_group.execute(cartesian_plan) == moveit::planning_interface::MoveItErrorCode::SUCCESS);
+        auto success = (move_group.execute(cartesian_plan) == moveit::planning_interface::MoveItErrorCode::SUCCESS);
         if (!success) {
             ROS_ERROR("Failed to execute Cartesian path.");
             return;
         }
+        ROS_INFO("Departed!");
     }
 
 
@@ -323,19 +319,11 @@ private:
 
         ROS_INFO("Starting picking operation for ID=%d", id);
 
-        // Initialize MoveIt interfaces
-        moveit::planning_interface::MoveGroupInterface move_group("arm");
-        // Change the end effector frame to perform the picking operation
-        move_group.setEndEffectorLink("gripper_base_link");
-        moveit::planning_interface::PlanningSceneInterface planning_scene;
+        initial_config();
 
-        moveit::planning_interface::MoveGroupInterface::Plan plan;
+        approach(pose);
 
-        initial_config(move_group, planning_scene, plan);
-
-        approach(move_group, planning_scene, plan, pose);
-
-        reach(move_group, planning_scene, plan, pose);
+        reach(pose);
 
         // Remove the target object from the collision objects
         std::string object_id = std::to_string(id);
@@ -348,11 +336,11 @@ private:
         
         grasp();
 
-        depart(move_group, planning_scene, plan, pose);
+        depart(pose);
 
-        initial_config(move_group, planning_scene, plan);
+        initial_config();
 
-        tuck_config(move_group, planning_scene, plan);
+        tuck_config();
 
         ROS_INFO("Picking operation completed for ID=%d", id);
         return true;

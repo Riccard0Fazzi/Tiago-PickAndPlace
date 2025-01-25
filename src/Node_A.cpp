@@ -73,6 +73,8 @@ public:
         gripper_client.waitForServer();
         move_group.setEndEffectorLink("gripper_base_link");
 		initialize_routines(); 
+        move_group.setPlanningTime(15.0);
+        move_group.setNumPlanningAttempts(5);
         picked_object = false;
         activated = false;
     }
@@ -231,16 +233,16 @@ public:
 		routineB.push_back(goal);
 
         // POST PLACING BACKING UP
-        goal.target_pose.pose.position.x = 8.03904;; // x-coordinate
-        goal.target_pose.pose.position.y = -1.85049; // y-coordinate
+        goal.target_pose.pose.position.x = 9.03904;; // x-coordinate
+        goal.target_pose.pose.position.y = -2.00049; // y-coordinate
         goal.target_pose.pose.orientation.z = 0.0; // sin(π/4)
         goal.target_pose.pose.orientation.w = 1.0; // cos(π/4)
 		
 		routineB.push_back(goal);
 
         // POST PLACING ORIENTATION
-        goal.target_pose.pose.position.x = 8.03904;; // x-coordinate
-        goal.target_pose.pose.position.y = -1.85049; // y-coordinate
+        goal.target_pose.pose.position.x = 9.03904;; // x-coordinate
+        goal.target_pose.pose.position.y = -2.00049; // y-coordinate
         goal.target_pose.pose.orientation.z = -0.7071; // sin(π/4)
         goal.target_pose.pose.orientation.w = 0.7071; // cos(π/4)
 		
@@ -251,6 +253,14 @@ public:
         goal.target_pose.pose.position.y = -4.01049; // y-coordinate
         goal.target_pose.pose.orientation.z = 1.0; // sin(π/4)
         goal.target_pose.pose.orientation.w = 0.0; // cos(π/4)
+		
+		routineB.push_back(goal);
+
+        // approach Picking Pose
+        goal.target_pose.pose.position.x = 7.83904; // x-coordinate
+        goal.target_pose.pose.position.y = -4.01049; // y-coordinate
+        goal.target_pose.pose.orientation.z = 0.7372; // sin(π/4)
+        goal.target_pose.pose.orientation.w = 0.6755; // cos(π/4)
 		
 		routineB.push_back(goal);
 
@@ -625,8 +635,6 @@ public:
             return;
         }
 
-        move_group.setPlanningTime(15.0);
-        move_group.setNumPlanningAttempts(5);
         ROS_INFO("Setting initial configuration for Tiago's arm...");
         auto planning_result = move_group.plan(plan);
         if(planning_result != moveit::planning_interface::MoveItErrorCode::SUCCESS){
@@ -940,7 +948,9 @@ public:
         ros::Duration(1.0).sleep();
         reach(placing_pose);
         openGripper();
+        ros::Duration(1.5).sleep();
         detach(id);
+        ros::Duration(1.0).sleep();
         depart(placing_pose);
         initial_config();
         tuck_config();
@@ -991,10 +1001,6 @@ private:
     moveit::planning_interface::MoveGroupInterface move_group;
     moveit::planning_interface::MoveGroupInterface::Plan plan;
     std::vector<std::pair<double, double>> position;
-
-
-
-
 
 };
 
