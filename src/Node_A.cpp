@@ -96,6 +96,7 @@ public:
     // wrt map frame (20 Hz)
     void AprilTagDetectionCallback(const apriltag_ros::AprilTagDetectionArray::ConstPtr& msg) 
     {
+        ROS_INFO("Active apriltagCB");
         if(msg->detections.empty()) return;
         // callBack always running, saving detected poses only when required
         for(const auto& detection : msg->detections)
@@ -223,14 +224,22 @@ public:
 
         // PLACING POSE
         goal.target_pose.pose.position.x = 8.53904; // x-coordinate
-        goal.target_pose.pose.position.y = -1.85049; // y-coordinate
+        goal.target_pose.pose.position.y = -2.00049; // y-coordinate
         goal.target_pose.pose.orientation.z = 0.9990; // sin(π/4)
         goal.target_pose.pose.orientation.w = -0.0436; // cos(π/4)
 
 		routineB.push_back(goal);
 
+        // POST PLACING BACKING UP
+        goal.target_pose.pose.position.x = 8.03904;; // x-coordinate
+        goal.target_pose.pose.position.y = -1.85049; // y-coordinate
+        goal.target_pose.pose.orientation.z = 0.0; // sin(π/4)
+        goal.target_pose.pose.orientation.w = 1.0; // cos(π/4)
+		
+		routineB.push_back(goal);
+
         // POST PLACING ORIENTATION
-        goal.target_pose.pose.position.x = 8.53904;; // x-coordinate
+        goal.target_pose.pose.position.x = 8.03904;; // x-coordinate
         goal.target_pose.pose.position.y = -1.85049; // y-coordinate
         goal.target_pose.pose.orientation.z = -0.7071; // sin(π/4)
         goal.target_pose.pose.orientation.w = 0.7071; // cos(π/4)
@@ -665,7 +674,7 @@ public:
         //pickup_table_pose.position.x = 7.88904; // Adjust based on the workspace
         //pickup_table_pose.position.y = -2.99049; // Adjust based on the workspace
         pickup_table_pose.position.x = 0.70; // Adjust based on the workspace
-        pickup_table_pose.position.y = 0.0; // Adjust based on the workspace
+        pickup_table_pose.position.y = -0.15; // Adjust based on the workspace
         pickup_table_pose.position.z = 0.375; // Half the height of the table for the center point
 
         // Assign primitive and pose to the collision object
@@ -899,7 +908,7 @@ public:
     {
         
         CollisionTable();
-        position.push_back({+M_PI / 7.2, -M_PI / 4.0}); // Look left 25 degrees (maintaining down)
+        position.push_back({0.0, -M_PI / 3.0}); // Look left 25 degrees (maintaining down)
         moveHead(position); 
         ros::Duration(1.0).sleep();
         position.clear();
@@ -920,9 +929,6 @@ public:
         }
         ROS_INFO("Terminated Detection");
         activated = false; // reset for next iteration
-        position.push_back({0.0, -M_PI / 4.0});
-        moveHead(position); 
-        position.clear();
         // Shutdown subscriber to avoid future callbacks
         object_detection_sub.shutdown();
         ROS_INFO("Object detection subscriber shut down.");
@@ -1003,7 +1009,6 @@ int main(int argc, char** argv)
 
 	// Navigate to the Picking Pose
 	nodeA.navigateToPickingPose();
-
     nodeA.liftTorso();
 
     // START THE LOOP
