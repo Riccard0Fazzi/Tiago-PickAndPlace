@@ -48,7 +48,8 @@ public:
           torso_client_("/torso_controller/follow_joint_trajectory", true),
           tf_listener(tf_buffer),
           attach_client(nh.serviceClient<gazebo_ros_link_attacher::Attach>("/link_attacher_node/detach")),
-          gripper_client("/parallel_gripper_controller/follow_joint_trajectory", true)
+          gripper_client("/parallel_gripper_controller/follow_joint_trajectory", true),
+          move_group("arm")
 
     {
         ROS_INFO("Node A initialized and ready to call /straight_line_srv service.");
@@ -70,7 +71,7 @@ public:
         ROS_INFO("Connected to torso controller action server.");
         ROS_INFO("Waiting for gripper action server...");
         gripper_client.waitForServer();
-       
+        move_group.setEndEffectorLink("gripper_base_link");
 		initialize_routines(); 
         picked_object = false;
         activated = false;
@@ -246,9 +247,9 @@ public:
 
         // PICKING POSE
         goal.target_pose.pose.position.x = 7.83904; // x-coordinate
-        goal.target_pose.pose.position.y = -3.71049; // y-coordinate
-        goal.target_pose.pose.orientation.z = 0.7071; // sin(π/4)
-        goal.target_pose.pose.orientation.w = 0.7071; // cos(π/4)
+        goal.target_pose.pose.position.y = -3.81049; // y-coordinate
+        goal.target_pose.pose.orientation.z = 0.7372; // sin(π/4)
+        goal.target_pose.pose.orientation.w = 0.6755; // cos(π/4)
 		
 		routineB.push_back(goal);
     }
@@ -431,6 +432,9 @@ public:
     // able to do the picking task
     void navigateBackToPickingPose()
     {
+        // Start an AsyncSpinner to handle callbacks
+        ros::AsyncSpinner spinner(1);
+        spinner.start();
 		for (size_t i = 3; i < routineB.size(); i++) {
             ROS_INFO("Iteration number: %ld, to go back to the picking pose",i);
             routineB[i].target_pose.header.stamp = ros::Time::now() + ros::Duration(0.1);
@@ -449,6 +453,8 @@ public:
 			ROS_INFO("The robot reached the Picking Pose successfully.");
 		else
 			ROS_WARN("The robot failed to reach the Picking Pose.");
+        // Stop the spinner after finishing
+        spinner.stop();
     }
 
     void liftTorso() {
@@ -476,9 +482,7 @@ public:
         }
     }
     
-    void initial_config(moveit::planning_interface::MoveGroupInterface& move_group,
-                    moveit::planning_interface::PlanningSceneInterface& planning_scene,
-                    moveit::planning_interface::MoveGroupInterface::Plan& plan) {
+    void initial_config() {
         // Start an AsyncSpinner to handle callbacks
         ros::AsyncSpinner spinner(1);
         spinner.start();
@@ -562,10 +566,7 @@ public:
     }
     
     //  -------------- APPROACH ----------------------
-    void approach(moveit::planning_interface::MoveGroupInterface& move_group,
-              moveit::planning_interface::PlanningSceneInterface& planning_scene,
-              moveit::planning_interface::MoveGroupInterface::Plan& plan,
-              geometry_msgs::Pose& pose) {
+    void approach(geometry_msgs::Pose& pose) {
         // Start an AsyncSpinner to handle callbacks
         ros::AsyncSpinner spinner(1);
         spinner.start();
@@ -640,7 +641,7 @@ public:
 
 
     // method to add the table as a collision object
-    void CollisionTable(moveit::planning_interface::PlanningSceneInterface planning_scene)
+    void CollisionTable()
     {
 
         // Table dimensions (slightly larger than real ones for safety)
@@ -663,8 +664,8 @@ public:
         geometry_msgs::Pose pickup_table_pose;
         //pickup_table_pose.position.x = 7.88904; // Adjust based on the workspace
         //pickup_table_pose.position.y = -2.99049; // Adjust based on the workspace
-        pickup_table_pose.position.x = 0.77; // Adjust based on the workspace
-        pickup_table_pose.position.y = 0.02; // Adjust based on the workspace
+        pickup_table_pose.position.x = 0.70; // Adjust based on the workspace
+        pickup_table_pose.position.y = 0.0; // Adjust based on the workspace
         pickup_table_pose.position.z = 0.375; // Half the height of the table for the center point
 
         // Assign primitive and pose to the collision object
@@ -693,10 +694,7 @@ public:
         return placing_pose;
     }
 
-    void reach(moveit::planning_interface::MoveGroupInterface& move_group,
-           moveit::planning_interface::PlanningSceneInterface& planning_scene,
-           moveit::planning_interface::MoveGroupInterface::Plan& plan,
-           geometry_msgs::Pose& pose) {
+    void reach(geometry_msgs::Pose& pose) {
         // Start an AsyncSpinner to handle callbacks
         ros::AsyncSpinner spinner(1);
         spinner.start();
@@ -811,10 +809,7 @@ public:
         }
     }
     
-    void depart(moveit::planning_interface::MoveGroupInterface& move_group,
-                        moveit::planning_interface::PlanningSceneInterface& planning_scene,
-                        moveit::planning_interface::MoveGroupInterface::Plan& plan,
-                        geometry_msgs::Pose& pose ){
+    void depart(geometry_msgs::Pose& pose ){
 
         // Start an AsyncSpinner to handle callbacks
         ros::AsyncSpinner spinner(1);
@@ -851,20 +846,18 @@ public:
         spinner.stop();
     }
 
-    void tuck_arm(moveit::planning_interface::MoveGroupInterface& move_group,
-                        moveit::planning_interface::PlanningSceneInterface& planning_scene,
-                        moveit::planning_interface::MoveGroupInterface::Plan& plan){
+    void tuck_config(){
         // Start an AsyncSpinner to handle callbacks
         ros::AsyncSpinner spinner(1);
         spinner.start();  
         // Set initial configuration for Tiago's arm
         std::map<std::string, double> initial_joint_positions;
-        initial_joint_positions["arm_1_joint"] = 0.200;   // Base joint
-        initial_joint_positions["arm_2_joint"] = -1.339; // Shoulder joint
-        initial_joint_positions["arm_3_joint"] = -0.200;   // Elbow joint
-        initial_joint_positions["arm_4_joint"] = 1.938; // Forearm
-        initial_joint_positions["arm_5_joint"] = -1.570;   // Wrist pitch
-        initial_joint_positions["arm_6_joint"] = 0.370;  // Wrist yaw
+        initial_joint_positions["arm_1_joint"] = 0.070;   // Base joint
+        initial_joint_positions["arm_2_joint"] = 0.449; // Shoulder joint
+        initial_joint_positions["arm_3_joint"] = -0.029;   // Elbow joint
+        initial_joint_positions["arm_4_joint"] = 2.147; // Forearm
+        initial_joint_positions["arm_5_joint"] = -2.029;   // Wrist pitch
+        initial_joint_positions["arm_6_joint"] = 0.129;  // Wrist yaw
         initial_joint_positions["arm_7_joint"] = 0.0;   // End-effector roll
         move_group.setJointValueTarget(initial_joint_positions);  
 
@@ -889,15 +882,24 @@ public:
         spinner.stop();
     }
 
+    void clearMoveItObjects()
+    {
+        // Clear the planning scene
+        std::vector<std::string> object_ids = planning_scene.getKnownObjectNames();
+        if (!object_ids.empty()) {
+            planning_scene.removeCollisionObjects(object_ids);
+            ROS_INFO("Removed %zu collision objects from the planning scene.", object_ids.size());
+        } else {
+            ROS_INFO("No collision objects to remove.");
+        }
+    }
+
 
     void Placing(int i)
     {
-        // Initialize MoveIt interfaces
-        moveit::planning_interface::PlanningSceneInterface planning_scene;
-        CollisionTable(planning_scene);
-         std::vector<std::pair<double, double>> position = {
-            {+M_PI / 7.2, -M_PI / 4.0},  // Look left 25 degrees (maintaining down)
-        };
+        
+        CollisionTable();
+        position.push_back({+M_PI / 7.2, -M_PI / 4.0}); // Look left 25 degrees (maintaining down)
         moveHead(position); 
         ros::Duration(1.0).sleep();
         position.clear();
@@ -918,32 +920,26 @@ public:
         }
         ROS_INFO("Terminated Detection");
         activated = false; // reset for next iteration
-        position = {
-            {0.0, -M_PI / 4.0}           // Return to initial position
-        };
+        position.push_back({0.0, -M_PI / 4.0});
         moveHead(position); 
         position.clear();
-        moveit::planning_interface::MoveGroupInterface move_group("arm");
-        // change the end effector frame to perform the picking operation
-        move_group.setEndEffectorLink("gripper_base_link");
-        moveit::planning_interface::MoveGroupInterface::Plan plan;
-        initial_config(move_group, planning_scene, plan);
-        // Create the pose to place the object based on the line equation
-        geometry_msgs::Pose placing_pose = computePlacingPose(i);  
-        approach(move_group, planning_scene, plan, placing_pose);
-        ros::Duration(1.0).sleep();
-        reach(move_group, planning_scene, plan, placing_pose);
-        openGripper();
-        detach(id);
-        depart(move_group, planning_scene, plan, placing_pose);
-        initial_config(move_group, planning_scene, plan);
-        tuck_arm(move_group, planning_scene, plan);
-
-        ROS_INFO("Tuck arm configuration completed.");
-        
         // Shutdown subscriber to avoid future callbacks
         object_detection_sub.shutdown();
         ROS_INFO("Object detection subscriber shut down.");
+        // change the end effector frame to perform the picking operation
+        initial_config();
+        // Create the pose to place the object based on the line equation
+        geometry_msgs::Pose placing_pose = computePlacingPose(i);  
+        approach(placing_pose);
+        ros::Duration(1.0).sleep();
+        reach(placing_pose);
+        openGripper();
+        detach(id);
+        depart(placing_pose);
+        initial_config();
+        tuck_config();
+
+        ROS_INFO("Tuck arm configuration completed.");
         
         // Clear collision objects safely
         if (!collision_objects.empty()) {
@@ -952,6 +948,7 @@ public:
         } else {
             ROS_WARN("Collision objects already empty.");
         }
+        clearMoveItObjects();
         //object_detection_sub.shutdown();
         //ROS_INFO("Shutdown the object detection sub");
         //ros::spinOnce();
@@ -983,6 +980,13 @@ private:
     tf2_ros::TransformListener tf_listener;
     TrajectoryClient gripper_client;
     std::vector<double> x_coordinates = {0.0,0.05,0.1};
+    // Initialize MoveIt interfaces
+    moveit::planning_interface::PlanningSceneInterface planning_scene;
+    moveit::planning_interface::MoveGroupInterface move_group;
+    moveit::planning_interface::MoveGroupInterface::Plan plan;
+    std::vector<std::pair<double, double>> position;
+
+
 
 
 
