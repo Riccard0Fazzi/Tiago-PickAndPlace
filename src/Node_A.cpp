@@ -250,14 +250,14 @@ public:
 		routineB.push_back(goal);
 */
 
-        goal.target_pose.pose.position.x = 9.2; // x-coordinate
+        goal.target_pose.pose.position.x = 8.8; // x-coordinate
         goal.target_pose.pose.position.y = -1.5; // y-coordinate
         goal.target_pose.pose.orientation.z =  0.7071; // sin(π/4)
         goal.target_pose.pose.orientation.w = 0.7071; // cos(π/4)
 
 		routineB.push_back(goal);
 
-        goal.target_pose.pose.position.x = 8.9; // x-coordinate
+        goal.target_pose.pose.position.x = 8.8; // x-coordinate
         goal.target_pose.pose.position.y = 0.0; // y-coordinate
         goal.target_pose.pose.orientation.z = 1.0; // sin(π/4)
         goal.target_pose.pose.orientation.w = 0.0; // cos(π/4)
@@ -711,7 +711,7 @@ public:
         //pickup_table_pose.position.x = 7.88904; // Adjust based on the workspace
         //pickup_table_pose.position.y = -2.99049; // Adjust based on the workspace
         pickup_table_pose.position.x = 0.75; // Adjust based on the workspace
-        pickup_table_pose.position.y = -0.3; // Adjust based on the workspace
+        pickup_table_pose.position.y = -0.15; // Adjust based on the workspace
         pickup_table_pose.position.z = 0.375; // Half the height of the table for the center point
 
         // Assign primitive and pose to the collision object
