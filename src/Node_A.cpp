@@ -467,12 +467,12 @@ public:
         ros::AsyncSpinner spinner(1);
         spinner.start();
 
-        routineB[4].target_pose.header.stamp = ros::Time::now() + ros::Duration(0.1);
+        routineB[3].target_pose.header.stamp = ros::Time::now() + ros::Duration(0.1);
 		// Navigation to the Picking Pose
-		ROS_INFO("[Navigation] x = %f, y = %f", routineB[4].target_pose.pose.position.x, routineB[4].target_pose.pose.position.y);
+		ROS_INFO("[Navigation] x = %f, y = %f", routineB[3].target_pose.pose.position.x, routineB[3].target_pose.pose.position.y);
 
 		// Send the goal to move_base
-		move_base_client_.sendGoal(routineB[4]);
+		move_base_client_.sendGoal(routineB[3]);
 		// wait for the result
 		move_base_client_.waitForResult();
         // wait for stable routine
