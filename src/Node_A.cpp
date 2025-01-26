@@ -225,7 +225,7 @@ public:
 		routineB.push_back(goal);
 
         // PLACING POSE
-        goal.target_pose.pose.position.x = 8.53904; // x-coordinate
+        goal.target_pose.pose.position.x = 8.58904; // x-coordinate 8.53904
         goal.target_pose.pose.position.y = -2.15049; // y-coordinate
         goal.target_pose.pose.orientation.z = 0.9990; // sin(π/4)
         goal.target_pose.pose.orientation.w = -0.0436; // cos(π/4)
@@ -250,7 +250,14 @@ public:
 		routineB.push_back(goal);
 */
 
-        goal.target_pose.pose.position.x = 8.53904; // x-coordinate
+        goal.target_pose.pose.position.x = 9.2; // x-coordinate
+        goal.target_pose.pose.position.y = -1.5; // y-coordinate
+        goal.target_pose.pose.orientation.z =  0.7071; // sin(π/4)
+        goal.target_pose.pose.orientation.w = 0.7071; // cos(π/4)
+
+		routineB.push_back(goal);
+
+        goal.target_pose.pose.position.x = 8.9; // x-coordinate
         goal.target_pose.pose.position.y = 0.0; // y-coordinate
         goal.target_pose.pose.orientation.z = 1.0; // sin(π/4)
         goal.target_pose.pose.orientation.w = 0.0; // cos(π/4)
@@ -477,6 +484,16 @@ public:
 		move_base_client_.waitForResult();
         // wait for stable routine
         ros::Duration(0.5).sleep();
+        routineB[4].target_pose.header.stamp = ros::Time::now() + ros::Duration(0.1);
+		// Navigation to the Picking Pose
+		ROS_INFO("[Navigation] x = %f, y = %f", routineB[4].target_pose.pose.position.x, routineB[4].target_pose.pose.position.y);
+
+		// Send the goal to move_base
+		move_base_client_.sendGoal(routineB[4]);
+		// wait for the result
+		move_base_client_.waitForResult();
+        // wait for stable routine
+        ros::Duration(0.5).sleep();
 
         navigateToPickingPose();
 		
@@ -693,8 +710,8 @@ public:
         geometry_msgs::Pose pickup_table_pose;
         //pickup_table_pose.position.x = 7.88904; // Adjust based on the workspace
         //pickup_table_pose.position.y = -2.99049; // Adjust based on the workspace
-        pickup_table_pose.position.x = 0.70; // Adjust based on the workspace
-        pickup_table_pose.position.y = -0.15; // Adjust based on the workspace
+        pickup_table_pose.position.x = 0.75; // Adjust based on the workspace
+        pickup_table_pose.position.y = -0.3; // Adjust based on the workspace
         pickup_table_pose.position.z = 0.375; // Half the height of the table for the center point
 
         // Assign primitive and pose to the collision object
@@ -967,8 +984,7 @@ public:
         tuck_config();
 
         ROS_INFO("Tuck arm configuration completed.");
-        
-        // Clear collision objects safely
+       // Clear collision objects safely
         if (!collision_objects.empty()) {
             collision_objects.clear();
             ROS_INFO("Collision objects cleared.");
@@ -976,7 +992,10 @@ public:
             ROS_WARN("Collision objects already empty.");
         }
         clearMoveItObjects();
+        
     }
+    std::vector<moveit_msgs::CollisionObject> collision_objects; // vector containing all collision objects detected
+
 
 private:
 
@@ -997,13 +1016,12 @@ private:
     TrajectoryClient torso_client_;
     geometry_msgs::PoseStamped line_origin;
     tf2_ros::TransformBroadcaster tf_broadcaster_;
-    std::vector<moveit_msgs::CollisionObject> collision_objects; // vector containing all collision objects detected
 	int id; // id of the picked object
     ros::ServiceClient attach_client;
     tf2_ros::Buffer tf_buffer; 
     tf2_ros::TransformListener tf_listener;
     TrajectoryClient gripper_client;
-    std::vector<double> y_coordinates = {0.0,0.15,0.3};
+    std::vector<double> y_coordinates = {0.0,0.1,0.2};
     // Initialize MoveIt interfaces
     moveit::planning_interface::PlanningSceneInterface planning_scene;
     moveit::planning_interface::MoveGroupInterface move_group;
@@ -1043,6 +1061,7 @@ int main(int argc, char** argv)
         nodeA.Placing(i);
         ROS_INFO("Go back to the picking pose!");
         nodeA.navigateBackToPickingPose();
+
     }
     // send goal to Node_B to detect a pickable object and pick it
     // send goal to Node_C to pick that object and 
