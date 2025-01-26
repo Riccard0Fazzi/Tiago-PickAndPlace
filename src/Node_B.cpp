@@ -150,6 +150,7 @@ class NodeB
                             tf2_ros::TransformListener tf_listener(tf_buffer);
                             ros::Rate rate(100.0);  // Loop frequency in Hz
                             // transform from camera frame to map frame
+                            ROS_INFO("Source frame to transform %s", frame.header.frame_id.c_str());
                             while (ros::ok()) {
                                 if(tf_buffer.canTransform("base_footprint", frame.header.frame_id, ros::Time::now(), ros::Duration(1.0))) {
                                     try {

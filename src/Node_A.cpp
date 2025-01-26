@@ -226,19 +226,20 @@ public:
 
         // PLACING POSE
         goal.target_pose.pose.position.x = 8.53904; // x-coordinate
-        goal.target_pose.pose.position.y = -2.00049; // y-coordinate
+        goal.target_pose.pose.position.y = -2.15049; // y-coordinate
         goal.target_pose.pose.orientation.z = 0.9990; // sin(π/4)
         goal.target_pose.pose.orientation.w = -0.0436; // cos(π/4)
 
 		routineB.push_back(goal);
-
+/*
         // POST PLACING BACKING UP
         goal.target_pose.pose.position.x = 9.03904;; // x-coordinate
         goal.target_pose.pose.position.y = -2.00049; // y-coordinate
         goal.target_pose.pose.orientation.z = 0.0; // sin(π/4)
         goal.target_pose.pose.orientation.w = 1.0; // cos(π/4)
 		
-		routineB.push_back(goal);
+		routineB.push_back(goal);   
+
 
         // POST PLACING ORIENTATION
         goal.target_pose.pose.position.x = 9.03904;; // x-coordinate
@@ -247,6 +248,7 @@ public:
         goal.target_pose.pose.orientation.w = 0.7071; // cos(π/4)
 		
 		routineB.push_back(goal);
+*/
 
         // upper WAY-CORNER
         goal.target_pose.pose.position.x = 8.83904; // x-coordinate
@@ -316,8 +318,10 @@ public:
             // Publish detection message 
             detection_pub.publish(msg);
             ros::spinOnce();
+            while (ros::ok()) {
+                if(tf_buffer.canTransform("base_footprint", "xtion_rgb_frame", ros::Time::now(), ros::Duration(1.0))) break;
+            }
             ros::Duration(1.0).sleep();
-
         }
         msg.collect = false;
         // Publish detection message 
@@ -702,10 +706,10 @@ public:
     {
         // set the x coordinates to place the object
         ROS_INFO("Coordinates of origin of table: x: %f, y:%f",line_origin.pose.position.x,line_origin.pose.position.y);
-        double y_coordinate = (m * x_coordinates[i]) + q;
+        double x_coordinate = (y_coordinates[i] - q) / m;
         geometry_msgs::Pose placing_pose = line_origin.pose;
-        placing_pose.position.y -= x_coordinates[i];
-        placing_pose.position.x += y_coordinate;
+        placing_pose.position.y -= x_coordinate;
+        placing_pose.position.x += y_coordinates[i] + q;
         ROS_INFO("Coordinates of placing pose x: %f, y:%f",placing_pose.position.x,placing_pose.position.y);
 
         return placing_pose;
@@ -911,7 +915,6 @@ public:
         }
     }
 
-
     void Placing(int i)
     {
         
@@ -965,9 +968,27 @@ public:
             ROS_WARN("Collision objects already empty.");
         }
         clearMoveItObjects();
-        //object_detection_sub.shutdown();
-        //ROS_INFO("Shutdown the object detection sub");
-        //ros::spinOnce();
+        // Backing up from the table
+          // Create a publisher for /cmd_vel
+        ros::Publisher cmd_vel_pub = nh_.advertise<geometry_msgs::Twist>("/cmd_vel", 10);
+        ros::spinOnce();
+        // Create a Twist message for backward motion
+        geometry_msgs::Twist twist;
+        twist.linear.x = -0.2;  // Move backward at 0.2 m/s
+        twist.angular.z = 0.0;  // No rotation
+
+        ros::Rate rate(10);  // 10 Hz
+        ROS_INFO("Moving backward...");
+        for (int i = 0; i < 50; ++i) {  // Publish for 5 seconds
+            cmd_vel_pub.publish(twist);
+            rate.sleep();
+        }
+        // Stop the robot after moving
+        twist.linear.x = 0.0;
+        cmd_vel_pub.publish(twist);
+        ROS_INFO("Stopped moving.");
+        ros::Duration(1.0).sleep();
+        cmd_vel_pub.shutdown();
     }
 
 private:
@@ -995,7 +1016,7 @@ private:
     tf2_ros::Buffer tf_buffer; 
     tf2_ros::TransformListener tf_listener;
     TrajectoryClient gripper_client;
-    std::vector<double> x_coordinates = {0.0,0.05,0.1};
+    std::vector<double> y_coordinates = {0.0,0.15,0.3};
     // Initialize MoveIt interfaces
     moveit::planning_interface::PlanningSceneInterface planning_scene;
     moveit::planning_interface::MoveGroupInterface move_group;
