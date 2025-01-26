@@ -981,14 +981,17 @@ public:
         ROS_INFO("Moving backward...");
         for (int i = 0; i < 50; ++i) {  // Publish for 5 seconds
             cmd_vel_pub.publish(twist);
+            ros::spinOnce();
             rate.sleep();
         }
         // Stop the robot after moving
         twist.linear.x = 0.0;
         cmd_vel_pub.publish(twist);
+        ros::spinOnce();
         ROS_INFO("Stopped moving.");
         ros::Duration(1.0).sleep();
         cmd_vel_pub.shutdown();
+        ros::spinOnce();
     }
 
 private:

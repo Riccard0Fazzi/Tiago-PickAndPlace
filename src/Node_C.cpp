@@ -122,22 +122,7 @@ private:
         ROS_INFO("Initial configuration set successfully.");
     }
 
-    void perturbPose(geometry_msgs::Pose& pose, double range_min, double range_max) {
-        // Random number generator for perturbation
-        std::random_device rd;
-        std::mt19937 gen(rd());
-        std::uniform_real_distribution<> dis(range_min, range_max);
 
-        // Add random values to x and y positions
-        double random_x = dis(gen);
-        double random_y = dis(gen);
-        
-        pose.position.x += random_x;
-        pose.position.y += random_y;
-
-        // Optionally log or print the adjustments for debugging
-        ROS_INFO("Pose perturbed: Added random_x = %f, random_y = %f", random_x, random_y);
-    }
     void approach(geometry_msgs::Pose& pose){
 
         // Set the target pose above the marker (10 cm above)
@@ -164,10 +149,6 @@ private:
         pose.orientation.z = combined_orientation.z();
         pose.orientation.w = combined_orientation.w(); 
 
-        // Add a random perturbation to the picking pose to cope with the uncertainty of apriltag detection
-        double range_min = -0.02; // Minimum perturbation, e.g., -2 cm
-        double range_max = 0.02;  // Maximum perturbation, e.g., +2 cm
-        perturbPose(pose, range_min, range_max);
         
         bool is_within_bounds = move_group.setPoseTarget(pose);
         if (!is_within_bounds) {

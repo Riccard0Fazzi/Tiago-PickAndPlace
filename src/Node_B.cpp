@@ -28,7 +28,7 @@
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
 #include <tf2_ros/transform_broadcaster.h>
 #include <geometry_msgs/TransformStamped.h> // For TF message
-
+#include <random>
 
 
 
@@ -38,7 +38,10 @@ class NodeB
 {
 	public:
 
-		NodeB():picking_client_("/picking", true) // action client to the move_base action server
+		NodeB()
+        :
+        picking_client_("/picking", true), // action client to the move_base action server
+        gen(rd())
         {
 			// Initialize the service server
 			ROS_INFO("Node_B server is up and ready to receive requests.");
@@ -89,7 +92,8 @@ class NodeB
         // send the goal of the collision object
         ir2425_group_24_a2::manipulationGoal goal;
         tf2_ros::TransformBroadcaster tf_broadcaster_;
-
+        std::random_device rd;
+        std::mt19937 gen;
 
 				
 		// CallBack to display Tiago's view
@@ -112,6 +116,23 @@ class NodeB
             } catch (cv_bridge::Exception& e) {
                 ROS_ERROR("Could not convert from '%s' to 'rgb8'.", msg->encoding.c_str());
             }
+        }
+
+        void perturbPose(geometry_msgs::Pose& pose) {
+            std::uniform_real_distribution<> dis_Y;
+            std::uniform_real_distribution<> dis_X(-0.1,0.0);
+            if(pose.position.y > 0) dis_Y = std::uniform_real_distribution<>(-0.1,0.0);
+            else dis_Y = std::uniform_real_distribution<>(0.0,0.1);
+
+            // Add random values to x and y positions
+            double random_x = dis_X(gen);
+            double random_y = dis_Y(gen);
+            
+            pose.position.x += random_x;
+            pose.position.y += random_y;
+
+            // Optionally log or print the adjustments for debugging
+            ROS_INFO("Pose perturbed: Added random_x = %f, random_y = %f", random_x, random_y);
         }
 
 		// CallBack for Object Detection
@@ -205,7 +226,10 @@ class NodeB
                                 primitive.dimensions[2] = 0.0385; // (Height)
                                 frame_in_bf.pose.position.z = table_h + 0.01925;  // z-correction
                             }
-
+                            // Add a random perturbation to the picking pose to cope with the uncertainty of apriltag detection
+                            double range_min = -0.01; // Minimum perturbation, e.g., -2 cm
+                            double range_max = 0.01;  // Maximum perturbation, e.g., +2 cm
+                            perturbPose(frame_in_bf.pose);
                             // add to the collision objects
                             collision_object.primitives.push_back(primitive);
                             collision_object.primitive_poses.push_back(frame_in_bf.pose);
