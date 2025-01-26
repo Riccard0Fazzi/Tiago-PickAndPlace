@@ -250,6 +250,13 @@ public:
 		routineB.push_back(goal);
 */
 
+        goal.target_pose.pose.position.x = 8.53904; // x-coordinate
+        goal.target_pose.pose.position.y = 0.0; // y-coordinate
+        goal.target_pose.pose.orientation.z = 1.0; // sin(π/4)
+        goal.target_pose.pose.orientation.w = 0.0; // cos(π/4)
+
+		routineB.push_back(goal);
+/*
         // upper WAY-CORNER
         goal.target_pose.pose.position.x = 8.83904; // x-coordinate
         goal.target_pose.pose.position.y = -4.01049; // y-coordinate
@@ -273,6 +280,7 @@ public:
         goal.target_pose.pose.orientation.w = 0.6755; // cos(π/4)
 		
 		routineB.push_back(goal);
+    */
     }
 
     void initializeDetection() {
@@ -458,19 +466,19 @@ public:
         // Start an AsyncSpinner to handle callbacks
         ros::AsyncSpinner spinner(1);
         spinner.start();
-		for (size_t i = 3; i < routineB.size(); i++) {
-            ROS_INFO("Iteration number: %ld, to go back to the picking pose",i);
-            routineB[i].target_pose.header.stamp = ros::Time::now() + ros::Duration(0.1);
-			// Navigation to the Picking Pose
-			ROS_INFO("[Navigation] x = %f, y = %f", routineB[i].target_pose.pose.position.x, routineB[i].target_pose.pose.position.y);
 
-			// Send the goal to move_base
-			move_base_client_.sendGoal(routineB[i]);
-			// wait for the result
-			move_base_client_.waitForResult();
-            // wait for stable routine
-            ros::Duration(0.5).sleep();
-		}
+        routineB[4].target_pose.header.stamp = ros::Time::now() + ros::Duration(0.1);
+		// Navigation to the Picking Pose
+		ROS_INFO("[Navigation] x = %f, y = %f", routineB[4].target_pose.pose.position.x, routineB[4].target_pose.pose.position.y);
+
+		// Send the goal to move_base
+		move_base_client_.sendGoal(routineB[4]);
+		// wait for the result
+		move_base_client_.waitForResult();
+        // wait for stable routine
+        ros::Duration(0.5).sleep();
+
+        navigateToPickingPose();
 		
 		if (move_base_client_.getState() == actionlib::SimpleClientGoalState::SUCCEEDED)
 			ROS_INFO("The robot reached the Picking Pose successfully.");
@@ -968,30 +976,6 @@ public:
             ROS_WARN("Collision objects already empty.");
         }
         clearMoveItObjects();
-        // Backing up from the table
-          // Create a publisher for /cmd_vel
-        ros::Publisher cmd_vel_pub = nh_.advertise<geometry_msgs::Twist>("/cmd_vel", 10);
-        ros::spinOnce();
-        // Create a Twist message for backward motion
-        geometry_msgs::Twist twist;
-        twist.linear.x = -0.2;  // Move backward at 0.2 m/s
-        twist.angular.z = 0.0;  // No rotation
-
-        ros::Rate rate(10);  // 10 Hz
-        ROS_INFO("Moving backward...");
-        for (int i = 0; i < 50; ++i) {  // Publish for 5 seconds
-            cmd_vel_pub.publish(twist);
-            ros::spinOnce();
-            rate.sleep();
-        }
-        // Stop the robot after moving
-        twist.linear.x = 0.0;
-        cmd_vel_pub.publish(twist);
-        ros::spinOnce();
-        ROS_INFO("Stopped moving.");
-        ros::Duration(1.0).sleep();
-        cmd_vel_pub.shutdown();
-        ros::spinOnce();
     }
 
 private:
