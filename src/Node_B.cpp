@@ -269,7 +269,7 @@ class NodeB
             {
                 id = stoi(object.id);
                 ROS_INFO("id=%d",id);
-                if(id >= 4 && id < 7){
+                if(id >= 1 && id <= 7){
                     // send the goal of the collision object
                     goal.ID = id;
                     goal.pose = object.primitive_poses[0];

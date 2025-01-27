@@ -98,7 +98,6 @@ public:
     // wrt map frame (20 Hz)
     void AprilTagDetectionCallback(const apriltag_ros::AprilTagDetectionArray::ConstPtr& msg) 
     {
-        ROS_INFO("Active apriltagCB");
         if(msg->detections.empty()) return;
         // callBack always running, saving detected poses only when required
         for(const auto& detection : msg->detections)
@@ -622,7 +621,7 @@ public:
         ROS_INFO("Start approach");
 
         // Adjust the target pose to be 25 cm above the marker
-        pose.position.z += 0.25;
+        pose.position.z += 0.28;
 
         // Step 1: Extract the current orientation from the pose
         tf2::Quaternion current_orientation(
@@ -992,7 +991,8 @@ public:
             ROS_WARN("Collision objects already empty.");
         }
         clearMoveItObjects();
-        
+        line_origin.header.frame_id = "";  // Set to an empty string to clear it
+        if(line_origin.header.frame_id.empty()) ROS_INFO("line_origin successfully cleared");
     }
     std::vector<moveit_msgs::CollisionObject> collision_objects; // vector containing all collision objects detected
 
