@@ -8,11 +8,8 @@
 #include <moveit/move_group_interface/move_group_interface.h>
 #include <moveit/planning_scene_interface/planning_scene_interface.h>
 #include <moveit_msgs/CollisionObject.h>
-
 #include <tf2/LinearMath/Transform.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
-#include <tf2_ros/transform_broadcaster.h>
-#include <geometry_msgs/TransformStamped.h> // For TF message
 // import for gripper
 #include <actionlib/client/simple_action_client.h>
 #include <control_msgs/FollowJointTrajectoryAction.h>
@@ -25,26 +22,28 @@ typedef actionlib::SimpleActionClient<control_msgs::FollowJointTrajectoryAction>
 
 class PickingActionServer {
 private:
+    
+    // CLASS VARIABLES
     ros::NodeHandle nh_;
-    actionlib::SimpleActionServer<ir2425_group_24_a2::manipulationAction> as_;
-    std::string action_name_;
-    ir2425_group_24_a2::manipulationFeedback feedback_;
-    ir2425_group_24_a2::manipulationResult result_;
-    tf2_ros::TransformBroadcaster tf_broadcaster_;
-    TrajectoryClient gripper_client;
-    moveit::planning_interface::MoveGroupInterface move_group;
+    actionlib::SimpleActionServer<ir2425_group_24_a2::manipulationAction> as_; // action server to the client in Node_B
+    std::string action_name_; // name of the server
+    ir2425_group_24_a2::manipulationFeedback feedback_; // feedback of the server
+    ir2425_group_24_a2::manipulationResult result_; // result of the server
+    TrajectoryClient gripper_client; // client to close the gripper
+    // moveIt interface variables
+    moveit::planning_interface::MoveGroupInterface move_group; 
     moveit::planning_interface::PlanningSceneInterface planning_scene;
     moveit::planning_interface::MoveGroupInterface::Plan plan;
 
 public:
+
+    // [CONSTRUCTOR]
     PickingActionServer(const std::string& name) :
         as_(nh_, name, boost::bind(&PickingActionServer::executeCB, this, _1), false),
         action_name_(name),
         move_group("arm"), 
         gripper_client("/parallel_gripper_controller/follow_joint_trajectory", true) {
             as_.start();
-            ROS_INFO("Picking Action Server initialized.");
-            ROS_INFO("Waiting for gripper action server...");
             gripper_client.waitForServer();
             // Change the end effector frame to perform the picking operation
             move_group.setEndEffectorLink("gripper_base_link");
@@ -52,10 +51,10 @@ public:
             move_group.setNumPlanningAttempts(5);
     }
 
-    // CALLBACK that receives the goal when sent
+    // [CALLBACK] to start the picking action
+    // __________________________________________________________________
     void executeCB(const ir2425_group_24_a2::manipulationGoalConstPtr& goal) {
-        ROS_INFO("Received goal: ID=%d", goal->ID);
-
+        ROS_INFO("Start Picking of object ID=%d", goal->ID);
         // Perform picking operation
         bool success = performPicking(goal->ID, goal->pose);
 
@@ -72,6 +71,8 @@ public:
 
 private:
 
+    // [METHOD] to set Tiago's arm at an initial configuration
+    // _______________________________________________________________________
     void initial_config(){
         // Set initial configuration for Tiago's arm
         std::map<std::string, double> initial_joint_positions;
@@ -83,7 +84,6 @@ private:
         initial_joint_positions["arm_6_joint"] = 1.370;  // Wrist yaw
         initial_joint_positions["arm_7_joint"] = 0.0;   // End-effector roll
         move_group.setJointValueTarget(initial_joint_positions);  
-        ROS_INFO("Setting initial configuration for Tiago's arm...");
         auto success = (move_group.plan(plan) == moveit::planning_interface::MoveItErrorCode::SUCCESS);
         if (!success) {
             ROS_ERROR("Failed to plan motion to initial configuration.");
@@ -97,6 +97,8 @@ private:
         ROS_INFO("Initial configuration set successfully.");
     }
 
+    // [METHOD] to set Tiago's arm at a safe configuration for navigation
+    // _______________________________________________________________________
     void tuck_config(){
         // Set initial configuration for Tiago's arm
         std::map<std::string, double> initial_joint_positions;
@@ -108,7 +110,6 @@ private:
         initial_joint_positions["arm_6_joint"] = 0.129;  // Wrist yaw
         initial_joint_positions["arm_7_joint"] = 0.0;   // End-effector roll
         move_group.setJointValueTarget(initial_joint_positions);  
-        ROS_INFO("Setting initial configuration for Tiago's arm...");
         auto success = (move_group.plan(plan) == moveit::planning_interface::MoveItErrorCode::SUCCESS);
         if (!success) {
             ROS_ERROR("Failed to plan motion to initial configuration.");
@@ -122,59 +123,36 @@ private:
         ROS_INFO("Initial configuration set successfully.");
     }
 
-
+    // [METHOD] to approach the object to pick
+    // _______________________________________________________________________
     void approach(geometry_msgs::Pose& pose, int id){
         // Set the target pose above the marker (10 cm above)
         // Set the orientation for z-axis pointing downwards
         tf2::Quaternion orientation_downwards;
         if(id <= 3) pose.position.z += 0.15;
-
         else pose.position.z += 0.25;
-
         tf2::Quaternion current_orientation(
             pose.orientation.x,
             pose.orientation.y,
             pose.orientation.z,
             pose.orientation.w);
-
-        // Step 3: Define the rotation about the x-axis (180°)
+        // Define the rotation about the x-axis (180°)
         tf2::Quaternion rotation_about_x;
         rotation_about_x.setRPY(M_PI, 0, 0); // Roll = 180°, Pitch = 0°, Yaw = 0°
-
-        // Step 4: Combine the current orientation with the rotation
+        // Combine the current orientation with the rotation
         tf2::Quaternion combined_orientation = current_orientation * rotation_about_x;
         combined_orientation.normalize(); // Ensure the quaternion is normalized
-
-        // Step 5: Assign the combined orientation back to the target pose
+        // Assign the combined orientation back to the target pose
         pose.orientation.x = combined_orientation.x();
         pose.orientation.y = combined_orientation.y();
         pose.orientation.z = combined_orientation.z();
-        pose.orientation.w = combined_orientation.w(); 
-             // PUBLISH THE FRAME HERE
-                geometry_msgs::TransformStamped transform_stamped;
-                transform_stamped.header.stamp = ros::Time::now();
-                transform_stamped.header.frame_id = "base_footprint"; // Parent frame 
-                transform_stamped.child_frame_id = "picking_pose"; // Frame name for visualization
-
-                // Set the translation and rotation from the pose of the collision object
-                transform_stamped.transform.translation.x = pose.position.x;
-                transform_stamped.transform.translation.y = pose.position.y;
-                transform_stamped.transform.translation.z = pose.position.z;
-                transform_stamped.transform.rotation = pose.orientation;
-
-                // Publish the transformation
-                tf_broadcaster_.sendTransform(transform_stamped);
-                ros::spinOnce();
-
-        
+        pose.orientation.w = combined_orientation.w();  
         bool is_within_bounds = move_group.setPoseTarget(pose);
         if (!is_within_bounds) {
             ROS_ERROR("Target pose is outside the robot's workspace.");
             return;
         }
-
         // Plan and execute the motion to the target pose
-        ROS_INFO("Planning motion to target position above the marker...");
         auto success = (move_group.plan(plan) == moveit::planning_interface::MoveItErrorCode::SUCCESS);
         if (!success) {
             ROS_ERROR("Failed to plan motion to target position.");
@@ -185,59 +163,36 @@ private:
             ROS_ERROR("Failed to execute motion to target position.");
             return;
         }
-        ROS_INFO("Motion to target position completed.");
+        ROS_INFO("Approaching completed.");
     }
 
+    // [METHOD] to reach the object through a linear movement
+    // _______________________________________________________________________
     void reach(geometry_msgs::Pose& pose){
         // Perform linear movement to grasp the object
         geometry_msgs::Pose target_pose = pose;
-
         // Ad`d 0.25m offset along the z-axis
         target_pose.position.z -= 0.20;
-
-        ROS_INFO("Planning Cartesian path to touch the object...");
         std::vector<geometry_msgs::Pose> waypoints;
         waypoints.push_back(pose);
         waypoints.push_back(target_pose);
-             // PUBLISH THE FRAME HERE
-                geometry_msgs::TransformStamped transform_stamped;
-                transform_stamped.header.stamp = ros::Time::now();
-                transform_stamped.header.frame_id = "base_footprint"; // Parent frame 
-                transform_stamped.child_frame_id = "reaching_pose"; // Frame name for visualization
-
-                // Set the translation and rotation from the pose of the collision object
-                transform_stamped.transform.translation.x = target_pose.position.x;
-                transform_stamped.transform.translation.y = target_pose.position.y;
-                transform_stamped.transform.translation.z = target_pose.position.z;
-                transform_stamped.transform.rotation = target_pose.orientation;
-
-                // Publish the transformation
-                tf_broadcaster_.sendTransform(transform_stamped);
-                ros::spinOnce();
-
         moveit_msgs::RobotTrajectory trajectory;
         const double eef_step = 0.01; // Step size for end-effector
         double fraction = move_group.computeCartesianPath(waypoints, eef_step, trajectory);
-       
-        ROS_INFO("Cartesian path planning reached %.2f%% of its trajectory", fraction * 100);
-
         // Execute the trajectory
         moveit::planning_interface::MoveGroupInterface::Plan cartesian_plan;
         cartesian_plan.trajectory_ = trajectory;
-
-        ROS_INFO("Executing Cartesian path...");
         auto success = (move_group.execute(cartesian_plan) == moveit::planning_interface::MoveItErrorCode::SUCCESS);
         if (!success) {
             ROS_ERROR("Failed to execute Cartesian path.");
             return;
         }
-        ROS_INFO("Cartesian path executed...");
+        ROS_INFO("Reaching executed...");
     }
 
-
+    // [METHOD] to grasp the object by closing the gripper
+    // _______________________________________________________________________
     void grasp(){
-
-        ROS_INFO("Closing the gripper...");
         // Create the trajectory goal
         control_msgs::FollowJointTrajectoryGoal goal;
         goal.trajectory.joint_names.push_back("gripper_joint"); // Replace with your gripper joint name
@@ -260,9 +215,10 @@ private:
         ROS_INFO("Object grasped!");
     }
 
+    // [METHOD] to attach the object to the e-e link
+    // _______________________________________________________________________
     void attach(int32_t id) {
         ros::ServiceClient client = nh_.serviceClient<gazebo_ros_link_attacher::Attach>("/link_attacher_node/attach");
-
         gazebo_ros_link_attacher::Attach srv;
         srv.request.model_name_1 = "tiago";  // Name of the robot (gripper)
         std::string name;
@@ -304,7 +260,6 @@ private:
         srv.request.link_name_1 = "arm_7_link";  // Link name of the gripper
         srv.request.link_name_2 = link_name;   // Link name of the object
 
-
         if (client.call(srv)) {
             ROS_INFO("Successfully attached object to the gripper.");
             return;
@@ -314,29 +269,22 @@ private:
         }
     }
 
+    // [METHOD] to depart with the object
+    // _______________________________________________________________________
     void depart(geometry_msgs::Pose& pose){
         // Perform linear movement to grasp the object
         geometry_msgs::Pose target_pose = pose;
-
         // Add 0.25m offset along the z-axis
         target_pose.position.z += 0.20;
-
-        ROS_INFO("Planning Cartesian path to depart ...");
         std::vector<geometry_msgs::Pose> waypoints;
         waypoints.push_back(pose);
         waypoints.push_back(target_pose);
-
         moveit_msgs::RobotTrajectory trajectory;
         const double eef_step = 0.01; // Step size for end-effector
         double fraction = move_group.computeCartesianPath(waypoints, eef_step, trajectory);
-
-        ROS_INFO("Cartesian path planning reached %.2f%% of its trajectory", fraction * 100);
-
         // Execute the trajectory
         moveit::planning_interface::MoveGroupInterface::Plan cartesian_plan;
         cartesian_plan.trajectory_ = trajectory;
-
-        ROS_INFO("Executing Cartesian path...");
         auto success = (move_group.execute(cartesian_plan) == moveit::planning_interface::MoveItErrorCode::SUCCESS);
         if (!success) {
             ROS_ERROR("Failed to execute Cartesian path.");
@@ -347,25 +295,19 @@ private:
 
 
 
-    // method to perform the picking operation
+    // [METHOD] to globally handle the picking operation
+    // _______________________________________________________________________
     bool performPicking(int32_t id, geometry_msgs::Pose pose) {
-
         ROS_INFO("Starting picking operation for ID=%d", id);
-
         initial_config();
-
         approach(pose, id);
         ros::Duration(1.0).sleep();
         reach(pose);
         ros::Duration(1.0).sleep();
-
-
         // Remove the target object from the collision objects
         std::string object_id = std::to_string(id);
         std::vector<std::string> object_ids = {object_id};
         planning_scene.removeCollisionObjects(object_ids);
-        ROS_INFO("Removed target object from collision objects.");
-
         // ROS lINK ATTACHER
         attach(id);
         
