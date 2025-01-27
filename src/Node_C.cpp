@@ -123,11 +123,14 @@ private:
     }
 
 
-    void approach(geometry_msgs::Pose& pose){
+    void approach(geometry_msgs::Pose& pose, int id){
         // Set the target pose above the marker (10 cm above)
         // Set the orientation for z-axis pointing downwards
         tf2::Quaternion orientation_downwards;
-        pose.position.z += 0.25;
+        if(id <= 3) pose.position.z += 0.15;
+
+        else pose.position.z += 0.25;
+
         tf2::Quaternion current_orientation(
             pose.orientation.x,
             pose.orientation.y,
@@ -351,7 +354,7 @@ private:
 
         initial_config();
 
-        approach(pose);
+        approach(pose, id);
         ros::Duration(1.0).sleep();
         reach(pose);
         ros::Duration(1.0).sleep();
