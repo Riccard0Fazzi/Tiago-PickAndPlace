@@ -124,7 +124,6 @@ private:
 
 
     void approach(geometry_msgs::Pose& pose){
-
         // Set the target pose above the marker (10 cm above)
         // Set the orientation for z-axis pointing downwards
         tf2::Quaternion orientation_downwards;
@@ -148,6 +147,21 @@ private:
         pose.orientation.y = combined_orientation.y();
         pose.orientation.z = combined_orientation.z();
         pose.orientation.w = combined_orientation.w(); 
+             // PUBLISH THE FRAME HERE
+                geometry_msgs::TransformStamped transform_stamped;
+                transform_stamped.header.stamp = ros::Time::now();
+                transform_stamped.header.frame_id = "base_footprint"; // Parent frame 
+                transform_stamped.child_frame_id = "picking_pose"; // Frame name for visualization
+
+                // Set the translation and rotation from the pose of the collision object
+                transform_stamped.transform.translation.x = pose.position.x;
+                transform_stamped.transform.translation.y = pose.position.y;
+                transform_stamped.transform.translation.z = pose.position.z;
+                transform_stamped.transform.rotation = pose.orientation;
+
+                // Publish the transformation
+                tf_broadcaster_.sendTransform(transform_stamped);
+                ros::spinOnce();
 
         
         bool is_within_bounds = move_group.setPoseTarget(pose);
@@ -175,18 +189,33 @@ private:
         // Perform linear movement to grasp the object
         geometry_msgs::Pose target_pose = pose;
 
-        // Add 0.25m offset along the z-axis
+        // Ad`d 0.25m offset along the z-axis
         target_pose.position.z -= 0.20;
 
         ROS_INFO("Planning Cartesian path to touch the object...");
         std::vector<geometry_msgs::Pose> waypoints;
         waypoints.push_back(pose);
         waypoints.push_back(target_pose);
+             // PUBLISH THE FRAME HERE
+                geometry_msgs::TransformStamped transform_stamped;
+                transform_stamped.header.stamp = ros::Time::now();
+                transform_stamped.header.frame_id = "base_footprint"; // Parent frame 
+                transform_stamped.child_frame_id = "reaching_pose"; // Frame name for visualization
+
+                // Set the translation and rotation from the pose of the collision object
+                transform_stamped.transform.translation.x = target_pose.position.x;
+                transform_stamped.transform.translation.y = target_pose.position.y;
+                transform_stamped.transform.translation.z = target_pose.position.z;
+                transform_stamped.transform.rotation = target_pose.orientation;
+
+                // Publish the transformation
+                tf_broadcaster_.sendTransform(transform_stamped);
+                ros::spinOnce();
 
         moveit_msgs::RobotTrajectory trajectory;
         const double eef_step = 0.01; // Step size for end-effector
         double fraction = move_group.computeCartesianPath(waypoints, eef_step, trajectory);
-
+       
         ROS_INFO("Cartesian path planning reached %.2f%% of its trajectory", fraction * 100);
 
         // Execute the trajectory
@@ -283,7 +312,6 @@ private:
     }
 
     void depart(geometry_msgs::Pose& pose){
-
         // Perform linear movement to grasp the object
         geometry_msgs::Pose target_pose = pose;
 
@@ -324,22 +352,10 @@ private:
         initial_config();
 
         approach(pose);
-        // PUBLISH THE FRAME HERE
-                geometry_msgs::TransformStamped transform_stamped;
-                transform_stamped.header.stamp = ros::Time::now();
-                transform_stamped.header.frame_id = "base_footprint"; // Parent frame 
-                transform_stamped.child_frame_id = "picking_pose"; // Frame name for visualization
-
-                // Set the translation and rotation from the pose of the collision object
-                transform_stamped.transform.translation.x = pose.position.x;
-                transform_stamped.transform.translation.y = pose.position.y;
-                transform_stamped.transform.translation.z = pose.position.z;
-                transform_stamped.transform.rotation = pose.orientation;
-
-                // Publish the transformation
-                tf_broadcaster_.sendTransform(transform_stamped);
-
+        ros::Duration(1.0).sleep();
         reach(pose);
+        ros::Duration(1.0).sleep();
+
 
         // Remove the target object from the collision objects
         std::string object_id = std::to_string(id);

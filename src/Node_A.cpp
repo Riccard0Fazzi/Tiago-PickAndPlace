@@ -728,14 +728,23 @@ public:
 
     geometry_msgs::Pose computePlacingPose(int i)
     {
+        geometry_msgs::Pose placing_pose;
         // set the x coordinates to place the object
         ROS_INFO("Coordinates of origin of table: x: %f, y:%f",line_origin.pose.position.x,line_origin.pose.position.y);
-        double x_coordinate = (y_coordinates[i] - q) / m;
-        geometry_msgs::Pose placing_pose = line_origin.pose;
-        placing_pose.position.y -= x_coordinate;
-        placing_pose.position.x += y_coordinates[i] + q;
-        ROS_INFO("Coordinates of placing pose x: %f, y:%f",placing_pose.position.x,placing_pose.position.y);
-
+        if(m<1){
+            double y_coordinate = m * coordinates[i] + q;
+            placing_pose = line_origin.pose;
+            placing_pose.position.y -= coordinates[i];
+            placing_pose.position.x += y_coordinate;
+            ROS_INFO("Coordinates of placing pose x: %f, y:%f",placing_pose.position.x,placing_pose.position.y);
+        }
+        else{
+            double x_coordinate = coordinates[i]/m;
+            placing_pose = line_origin.pose;
+            placing_pose.position.y -= x_coordinate;
+            placing_pose.position.x += coordinates[i] + q;
+            ROS_INFO("Coordinates of placing pose x: %f, y:%f",placing_pose.position.x,placing_pose.position.y);
+        }
         return placing_pose;
     }
 
@@ -1021,7 +1030,7 @@ private:
     tf2_ros::Buffer tf_buffer; 
     tf2_ros::TransformListener tf_listener;
     TrajectoryClient gripper_client;
-    std::vector<double> y_coordinates = {0.0,0.1,0.2};
+    std::vector<double> coordinates = {0.0,0.15,0.30};
     // Initialize MoveIt interfaces
     moveit::planning_interface::PlanningSceneInterface planning_scene;
     moveit::planning_interface::MoveGroupInterface move_group;

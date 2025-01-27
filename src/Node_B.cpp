@@ -191,9 +191,9 @@ class NodeB
                             if (id <= 3) {  // Hexagonal prism
                                 primitive.type = shape_msgs::SolidPrimitive::CYLINDER;
                                 primitive.dimensions.resize(2);
-                                primitive.dimensions[0] = 0.12;  // height
-                                primitive.dimensions[1] = 0.035; // radius
-                                frame_in_bf.pose.position.z = table_h + 0.06; // z-correction
+                                primitive.dimensions[0] = 0.11;  // height
+                                primitive.dimensions[1] = 0.025; // radius
+                                frame_in_bf.pose.position.z = table_h + 0.055; // z-correction
                             } else if (id <= 6) { // Cube
                                 primitive.type = shape_msgs::SolidPrimitive::BOX;
                                 primitive.dimensions.resize(3);
@@ -275,7 +275,7 @@ class NodeB
                     goal.pose = object.primitive_poses[0];
                     // adjust z-axis to be the top of the object
                     if(id<=3){
-                        goal.pose.position.z += 0.11;
+                        goal.pose.position.z += 0.055;
                     }
                     else if(id<=6){
                         goal.pose.position.z += 0.0275;
