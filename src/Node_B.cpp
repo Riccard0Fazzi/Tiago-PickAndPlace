@@ -2,12 +2,7 @@
 #include <std_msgs/Bool.h>
 #include <ir2425_group_24_a2/picking_completed.h>
 #include <ir2425_group_24_a2/detection.h>
-// import for tiago eyes callback
-#include <sensor_msgs/Image.h>
-#include <cv_bridge/cv_bridge.h>
-#include <image_transport/image_transport.h>
-#include <opencv2/opencv.hpp>
-// import for ObjectDetectionCallback
+
 #include <apriltag_ros/AprilTagDetectionArray.h>
 #include <geometry_msgs/TransformStamped.h>
 #include <geometry_msgs/PoseStamped.h>
@@ -40,14 +35,10 @@ class NodeB
 
 		NodeB()
         :
-        picking_client_("/picking", true), // action client to the move_base action server
-        gen(rd())
+        picking_client_("/picking", true) // action client to the move_base action server
         {
 			// Initialize the service server
 			ROS_INFO("Node_B server is up and ready to receive requests.");
-			// Subscriber of image_transport type for Tiago Camera-Visual topic (essages rate: 30 Hz)
-            image_transport::ImageTransport it(nh_);
-            image_sub = it.subscribe("/xtion/rgb/image_color", 10, &NodeB::tiagoEyesCallback, this);
             // Subscriber to the AprilTag detection topic (messages rate: 20 Hz)
             object_detection_sub = nh_.subscribe("/tag_detections", 10, &NodeB::ObjectDetectionCallback, this);
             // Wait for the NodeC picking action server to start
@@ -81,7 +72,6 @@ class NodeB
         ros::NodeHandle nh_;
         tf2_ros::Buffer tf_buffer; 
 		ros::Subscriber object_detection_sub; // subscriber for apriltag detection
-		image_transport::Subscriber image_sub; // subscriber for camera display
 		bool activated; // variable to trigger the detection of the objects or not
         moveit::planning_interface::PlanningSceneInterface planning_scene_interface; // planning scene for the collision objects  
         std::vector<moveit_msgs::CollisionObject> collision_objects; // vector containing all collision objects detected
@@ -92,31 +82,8 @@ class NodeB
         // send the goal of the collision object
         ir2425_group_24_a2::manipulationGoal goal;
         tf2_ros::TransformBroadcaster tf_broadcaster_;
-        std::random_device rd;
-        std::mt19937 gen;
+    
 
-				
-		// CallBack to display Tiago's view
-        // ______________________________________________
-        // [VISUAL PURPOSE ONLY]
-        // show the current RGB image (30Hz)
-        void tiagoEyesCallback(const sensor_msgs::ImageConstPtr& msg) {
-            try {
-                // create the mat object to store Tiago's camera current image
-                cv::Mat img = cv_bridge::toCvCopy(msg, "rgb8")->image;
-                // let's downscale the image for visual purposes
-                int down_width = img.cols/2;
-                int down_height = img.rows/2;
-                cv::Mat resized_down;
-                //resize down
-                //resize(img, resized_down, cv::Size(down_width, down_height), cv::INTER_LINEAR);
-                        // Display the image
-                        cv::imshow("Tiago Eyes", img);
-                        cv::waitKey(1);
-            } catch (cv_bridge::Exception& e) {
-                ROS_ERROR("Could not convert from '%s' to 'rgb8'.", msg->encoding.c_str());
-            }
-        }
 
 		// CallBack for Object Detection
         // ______________________________________________
