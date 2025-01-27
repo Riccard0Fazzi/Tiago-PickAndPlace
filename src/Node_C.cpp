@@ -324,6 +324,20 @@ private:
         initial_config();
 
         approach(pose);
+        // PUBLISH THE FRAME HERE
+                geometry_msgs::TransformStamped transform_stamped;
+                transform_stamped.header.stamp = ros::Time::now();
+                transform_stamped.header.frame_id = "base_footprint"; // Parent frame 
+                transform_stamped.child_frame_id = "picking_pose"; // Frame name for visualization
+
+                // Set the translation and rotation from the pose of the collision object
+                transform_stamped.transform.translation.x = pose.position.x;
+                transform_stamped.transform.translation.y = pose.position.y;
+                transform_stamped.transform.translation.z = pose.position.z;
+                transform_stamped.transform.rotation = pose.orientation;
+
+                // Publish the transformation
+                tf_broadcaster_.sendTransform(transform_stamped);
 
         reach(pose);
 

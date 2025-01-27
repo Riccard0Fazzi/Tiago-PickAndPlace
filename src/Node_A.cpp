@@ -621,7 +621,7 @@ public:
         ROS_INFO("Start approach");
 
         // Adjust the target pose to be 25 cm above the marker
-        pose.position.z += 0.28;
+        pose.position.z += 0.25;
 
         // Step 1: Extract the current orientation from the pose
         tf2::Quaternion current_orientation(
