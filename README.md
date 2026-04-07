@@ -60,7 +60,7 @@ The system is organized into three ROS nodes:
   - Executes pick-and-place operations using MoveIt
   - Plans and executes motion trajectories
 
-Communication between nodes is implemented using custom ROS messages and actions. :contentReference[oaicite:0]{index=0}
+Communication between nodes is implemented using custom ROS messages and actions.
 
 ---
 
